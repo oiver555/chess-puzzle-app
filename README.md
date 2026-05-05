@@ -1,15 +1,15 @@
 # Chess Sandbox ♟️
 
-Chess Sandbox is a React Native chess application built with :contentReference[oaicite:0]{index=0} and :contentReference[oaicite:1]{index=1}.
+Chess Sandbox is a React Native chess application built with Chess.js and Stockfish.
 
 The goal of this project is to build a full-featured chess app that supports:
 
 - Real chess piece movement
-- Legal move validation using :contentReference[oaicite:2]{index=2}
+- Legal move validation using Chess.js
 - Interactive board selection and move highlighting
 - SVG-based chess pieces
 - Move sound effects
-- Future AI opponent integration using :contentReference[oaicite:3]{index=3}
+- Future AI opponent integration using Stockfish
 - Offline gameplay support
 - Difficulty levels for AI opponents
 
