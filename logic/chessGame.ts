@@ -30,3 +30,11 @@ export const resetGame = () => {
 export const getFen = () => {
   return game.fen();
 };
+
+export const moveAiPiece = (from: string, to: string) => {
+  return game.move({
+    from,
+    to,
+    promotion: "q",
+  });
+};

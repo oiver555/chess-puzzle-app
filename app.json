@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "splash": {
+      "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -19,8 +20,16 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/images/splash-icon.png",
         "backgroundColor": "#FFFFFF"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.anonymous.chesssandbox"
     },
     "plugins": [
       "expo-audio",
