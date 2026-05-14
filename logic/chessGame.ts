@@ -24,17 +24,24 @@ export const getPieceAtSquare = (square: string) => {
 };
 
 export const resetGame = () => {
+   console.log("Resetting Chess.js");
   game.reset();
 };
 
 export const getFen = () => {
   return game.fen();
 };
-
-export const moveAiPiece = (from: string, to: string) => {
+export const getCurrentBoard = () => {
+  return game.board();
+};
+export const moveAiPiece = (
+  from: string,
+  to: string,
+  promotion?: string
+) => {
   return game.move({
     from,
     to,
-    promotion: "q",
+    ...(promotion ? { promotion } : {}),
   });
 };
