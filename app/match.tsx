@@ -46,7 +46,7 @@ const Match = () => {
 
     const waitingForBestMove = React.useRef(false);
 
-    const { stockfishLoop, stopStockfish, sendCommandToStockfish } = useStockfish({
+    const { stockfishLoop, sendCommandToStockfish } = useStockfish({
         onOutput: useCallback((output: string) => {
             const cleanOutput = output.trim();
             if (!cleanOutput) { return }
@@ -89,8 +89,9 @@ const Match = () => {
             setLegalMoves([]);
             setRefresh((prev) => prev + 1);
             resetGame()
+            sendCommandToStockfish("stop");
+            sendCommandToStockfish("ucinewgame");
             sendCommandToStockfish("position startpos");
-            stopStockfish();
         };
     }, []);
 
