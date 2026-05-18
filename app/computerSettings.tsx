@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function ComputerSettingsScreen() {
-  const [userSide, setUserSide] = useState<"white" | "random" | "black">("white");
+  const [playerSide, setplayerSide] = useState<"w" | "r" | "b">("w");
   const [level, setLevel] = useState(1);
 
   return (
@@ -21,9 +21,9 @@ export default function ComputerSettingsScreen() {
         <Text style={styles.panelTitle}>Play as</Text>
 
         <View style={styles.sideRow}>
-          <SideButton label="White" icon="♙" active={userSide === "white"} onPress={() => setUserSide("white")} />
-          <SideButton label="Random" icon="◐" active={userSide === "random"} onPress={() => setUserSide("random")} />
-          <SideButton label="Black" icon="♟" active={userSide === "black"} onPress={() => setUserSide("black")} />
+          <SideButton label="White" icon="♙" active={playerSide === "w"} onPress={() => setplayerSide("w")} />
+          <SideButton label="Random" icon="◐" active={playerSide === "r"} onPress={() => setplayerSide("r")} />
+          <SideButton label="Black" icon="♟" active={playerSide === "b"} onPress={() => setplayerSide("b")} />
         </View>
       </View>
 
@@ -54,7 +54,7 @@ export default function ComputerSettingsScreen() {
           router.push({
             pathname: "/match",
             params: {
-              userSide,
+              side: playerSide,
               level: String(level),
             },
           });

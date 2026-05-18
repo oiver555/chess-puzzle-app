@@ -1,4 +1,4 @@
-import { Chess } from "chess.js";
+import { Chess, Square } from "chess.js";
 
 export const game = new Chess();
 
@@ -11,11 +11,11 @@ export const getLegalMoves = (square: string) => {
   return moves.map((move) => move.to);
 };
 
-export const movePiece = (from: string, to: string) => {
+export const movePiece = (from: string, to: string, promotion?: "q" | "r" | "b" | "n") => {
   return game.move({
     from,
     to,
-    promotion: "q",
+    promotion: promotion,
   });
 };
 
@@ -34,10 +34,11 @@ export const getFen = () => {
 export const getCurrentBoard = () => {
   return game.board();
 };
+
 export const moveAiPiece = (
-  from: string,
-  to: string,
-  promotion?: string
+  from: Square,
+  to: Square,
+  promotion?: "q" | "r" | "b" | "n"
 ) => {
   return game.move({
     from,

@@ -6,6 +6,7 @@ import React, { useCallback, useEffect } from "react";
 import { Dimensions, Modal, Pressable, StyleSheet, Text, View, } from "react-native";
 import Piece, { PieceCode } from "../components/Piece";
 import {
+    game,
     getCurrentBoard,
     getFen,
     getLegalMoves,
@@ -13,36 +14,113 @@ import {
     moveAiPiece,
     movePiece,
     resetGame,
+
 } from "../logic/chessGame";
+import { Square, } from "chess.js";
 
 const moveSound = require("../assets/sounds/move.wav");
 const screenWidth = Dimensions.get("window").width;
 const boardSize = screenWidth;
 const squareSize = boardSize / 8;
-
+const TEST_FEN = "8/P7/8/8/8/8/8/4k2K w - - 0 1";
 const Match = () => {
     const { side, level } = useLocalSearchParams<{
-        side?: "white" | "random" | "black";
+        side?: "w" | "b" | "r";
         level?: string;
     }>();
+
     const movePlayer = useAudioPlayer(moveSound);
-    const [selectedSquare, setSelectedSquare] = React.useState<string | null>(null);
-    const [legalMoves, setLegalMoves] = React.useState<string[]>([]);
+    const [selectedSquare, setSelectedSquare] = React.useState<Square | null>(null);
+    const [legalMoves, setLegalMoves] = React.useState<Square[]>([]);
     const [refresh, setRefresh] = React.useState<number>(0);
     const [showExitModal, setShowExitModal] = React.useState<boolean>(false);
-    const indexToSquare = (i: number) => {
-        const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    const [isCheckmate, setIsCheckmate] = React.useState<boolean>(false);
+    const [squareInCheck, setSquareInCheck] = React.useState<Square | "">("");
+    const playerColorRef = React.useRef<"w" | "b">(side === "r" ? (Math.random() < 0.5 ? "w" : "b") : (side === "w" ? "w" : "b"));
+    const aiSideRef = React.useRef<"w" | "b">(playerColorRef.current === "w" ? "b" : "w");
+    const [promotionMove, setPromotionMove] = React.useState<{
+        from: Square;
+        to: Square;
+    } | null>(null);
+    const indexToSquare = (i: number): Square => {
+        const files = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
         const row = Math.floor(i / 8);
         const col = i % 8;
-        const rank = 8 - row;
-        return `${files[col]}${rank}`;
+
+        if (playerColorRef.current === "w") {
+            const rank = 8 - row;
+            return `${files[col]}${rank}` as Square;
+        } else {
+            const flippedFiles = [...files].reverse();
+            const rank = row + 1;
+            return `${flippedFiles[col]}${rank}` as Square;
+        }
     };
 
-    const makeAiMove = async () => {
+    const handlePromotion = (promotion: "q" | "r" | "b" | "n") => {
+        if (!promotionMove) return;
+
+        playMoveSound();
+
+        movePiece(promotionMove.from, promotionMove.to, promotion);
+
+        setPromotionMove(null);
+        setSelectedSquare(null);
+        setLegalMoves([]);
+        setRefresh((prev) => prev + 1);
+
+        const status = checkGameStatus();
+
+        if (status === "checkmate" || status === "stalemate" || status === "draw") {
+            console.log(status);
+            return;
+        }
+
+        getAiMove();
+    };
+
+    const getAiMove = async () => {
         const fen = getFen();
         sendCommandToStockfish(`position fen ${fen}`);
         sendCommandToStockfish("go movetime 1000 depth 6");
     };
+
+    const checkGameStatus = () => {
+        if (game.isCheckmate()) {
+            return "checkmate";
+        }
+
+        if (game.isStalemate()) {
+            return "stalemate";
+        }
+
+        if (game.isDraw()) {
+            return "draw";
+        }
+
+        if (game.isCheck()) {
+            return "check";
+        }
+
+        return "active";
+    };
+
+    const undoMove = () => {
+        game.undo(); // undo AI move
+        game.undo(); // undo player move
+
+        setSelectedSquare(null);
+        setLegalMoves([]);
+        setIsCheckmate(false);
+        setSquareInCheck("");
+        setRefresh((prev) => prev + 1);
+    };
+
+    const playMoveSound = () => {
+        // movePlayer.seekTo(0);
+        // movePlayer.play();
+    }
+
 
     const waitingForBestMove = React.useRef(false);
 
@@ -50,7 +128,7 @@ const Match = () => {
         onOutput: useCallback((output: string) => {
             const cleanOutput = output.trim();
             if (!cleanOutput) { return }
-            console.log(cleanOutput);
+            // console.log(cleanOutput);
 
 
             if (cleanOutput === "bestmove") {
@@ -59,13 +137,19 @@ const Match = () => {
             }
 
             if (waitingForBestMove.current) {
-                console.timeEnd("AI move time");
                 const match = cleanOutput.match(/^([a-h][1-8][a-h][1-8][qrbn]?)$/);
                 if (match) {
                     const bestMove = match[1];
-                    const from = bestMove.slice(0, 2);
-                    const to = bestMove.slice(2, 4);
-                    moveAiPiece(from, to);
+                    const from = bestMove.slice(0, 2) as Square;
+                    const to = bestMove.slice(2, 4) as Square;
+                    const promotion = bestMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
+                    playMoveSound()
+                    moveAiPiece(from, to, promotion || undefined);
+                    const status = checkGameStatus();
+                    if (status === "check") {
+
+                    }
+                    console.log("Match.tsx", status);
                     setRefresh((prev) => prev + 1);
                 }
                 waitingForBestMove.current = false;
@@ -78,11 +162,16 @@ const Match = () => {
     });
 
     useEffect(() => {
-        resetGame();
+        game.load("8/P7/8/8/8/8/8/4k2K w - - 0 1");
         stockfishLoop();
         sendCommandToStockfish("uci");
         sendCommandToStockfish("isready");
         sendCommandToStockfish("ucinewgame");
+        sendCommandToStockfish(`position fen ${TEST_FEN}`);
+        setRefresh((prev) => prev + 1)
+        if (playerColorRef.current === "b") {
+            getAiMove();
+        }
 
         return () => {
             setSelectedSquare(null);
@@ -139,7 +228,7 @@ const Match = () => {
                                 <Text>Cancel</Text>
                             </Pressable>
 
-                            <Pressable onPress={() => {              
+                            <Pressable onPress={() => {
                                 setSelectedSquare(null);
                                 setLegalMoves([]);
                                 setRefresh((prev) => prev + 1);
@@ -151,7 +240,38 @@ const Match = () => {
                     </View>
                 </View>
             </Modal>
+            <Modal
+                visible={promotionMove !== null}
+                transparent
+                animationType="fade"
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalBox}>
+                        <Text style={styles.modalTitle}>Promote Pawn</Text>
 
+                        <View style={styles.promotionRow}>
+                            {(["q", "r", "b", "n"] as const).map((piece) => (
+                                <Pressable
+                                    key={piece}
+                                    style={styles.promotionButton}
+                                    onPress={() => handlePromotion(piece)}
+                                >
+
+                                    <Piece
+                                        code={
+                                            playerColorRef.current === "w"
+                                                ? piece.toUpperCase() as PieceCode
+                                                : piece as PieceCode
+                                        }
+                                        size={42}
+                                    />
+
+                                </Pressable>
+                            ))}
+                        </View>
+                    </View>
+                </View>
+            </Modal>
             <View style={styles.boardWrap}>
                 <View style={styles.board}>
                     {Array.from({ length: 64 }).map((_, i) => {
@@ -159,6 +279,7 @@ const Match = () => {
                         const isSelected = selectedSquare === squareName;
                         // @ts-ignore
                         const chessPiece = getPieceAtSquare(squareName);
+                        // console.log(chessPiece);
                         const isLegalMove = legalMoves.includes(squareName);
                         const row = Math.floor(i / 8);
                         const col = i % 8;
@@ -173,24 +294,50 @@ const Match = () => {
                                 key={i}
                                 style={[
                                     styles.square,
-                                    { backgroundColor: isDark ? "blue" : "green" },
+                                    { backgroundColor: isCheckmate && squareInCheck === squareName ? "red" : isDark ? "blue" : "green" },
                                     isSelected && { backgroundColor: "yellow" },
                                 ]}
                                 onPress={() => {
                                     const piece = getPieceAtSquare(squareName);
 
                                     if (selectedSquare && legalMoves.includes(squareName)) {
-                                        movePlayer.seekTo(0);
-                                        movePlayer.play();
+
+
+                                        const moves = game.moves({
+                                            square: selectedSquare,
+                                            verbose: true,
+                                        });
+
+                                        const selectedMove = moves.find((move) => move.to === squareName);
+
+                                        if (selectedMove?.isPromotion()) {
+                                            setPromotionMove({
+                                                from: selectedSquare,
+                                                to: squareName,
+                                            });
+                                            return;
+                                        }
+                                        playMoveSound()
                                         movePiece(selectedSquare, squareName);
                                         setSelectedSquare(null);
                                         setLegalMoves([]);
                                         setRefresh((prev) => prev + 1);
-                                        makeAiMove();
+
+                                        const status = checkGameStatus();
+
+
+                                        if (status === "checkmate" || status === "stalemate" || status === "draw") {
+                                            return;
+                                        }
+                                        if (status === "check") {
+                                            console.log("check");
+                                        }
+
+                                        getAiMove();
                                         return;
                                     }
 
-                                    if (piece && piece.color === "w") {
+                                    if (piece && piece.color === playerColorRef.current) {
                                         setSelectedSquare(squareName);
                                         setLegalMoves(getLegalMoves(squareName));
                                         // console.log(piece);
@@ -219,7 +366,7 @@ const Match = () => {
                 }} />
                 <ActionButton icon="♜" label="PIECES" onPress={() => sendCommandToStockfish("isready")} />
                 <ActionButton icon="↩" label="UNDO" onPress={() => {
-                    console.log(JSON.stringify(getCurrentBoard(), null, 2));
+                    undoMove();
 
                 }} />
                 <ActionButton icon="💡" label="HINT" onPress={() => {
@@ -238,6 +385,26 @@ const Match = () => {
 }
 
 const styles = StyleSheet.create({
+    promotionRow: {
+        flexDirection: "row",
+        justifyContent: "space-around",
+        marginTop: 20,
+    },
+
+    promotionButton: {
+        width: 54,
+        height: 54,
+        borderRadius: 10,
+        backgroundColor: "#f5c542",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+
+    promotionText: {
+        color: "#7a330f",
+        fontSize: 28,
+        fontWeight: "900",
+    },
     screen: {
         flex: 1,
         backgroundColor: "#06282d",
@@ -280,6 +447,7 @@ const styles = StyleSheet.create({
     boardWrap: {
         alignItems: "center",
         justifyContent: "center",
+        transform: [{ rotateZ: 0 + "deg" }],
     },
     actions: {
         flexDirection: "row",
