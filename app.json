@@ -9,7 +9,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-     "scheme": "chessmasters",
+    "scheme": "chessmasters",
     "updates": {
       "fallbackToCacheTimeout": 0
     },
@@ -32,7 +32,14 @@
     },
     "plugins": [
       "expo-audio",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-2717908523405901~9619860403",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+        }
+      ]      
     ]
   }
 }

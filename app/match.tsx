@@ -162,7 +162,6 @@ const Match = () => {
     });
 
     useEffect(() => {
-        game.load("8/P7/8/8/8/8/8/4k2K w - - 0 1");
         stockfishLoop();
         sendCommandToStockfish("uci");
         sendCommandToStockfish("isready");
@@ -348,6 +347,8 @@ const Match = () => {
                                     }
                                 }}
                             >
+                                {isLegalMove && <View style={styles.legalMoveDot} />}
+                               
                                 <Text style={styles.squareLabel}>{squareName}</Text>
                                 {pieceCode ? <Piece code={pieceCode} size={40} /> : <View style={{ width: 40, height: 40 }} />}
                             </Pressable>
@@ -385,6 +386,27 @@ const Match = () => {
 }
 
 const styles = StyleSheet.create({
+    captureRing: {
+        position: "absolute",
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        borderWidth: 4,
+        borderColor: "rgba(0, 200, 0, 0.75)",
+        alignSelf: "center",
+        top: "50%",
+        marginTop: -26,
+    },
+    legalMoveDot: {
+        position: "absolute",
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: "rgba(0, 180, 0, 0.65)",
+        alignSelf: "center",
+        top: "50%",
+        marginTop: -11,
+    },
     promotionRow: {
         flexDirection: "row",
         justifyContent: "space-around",
