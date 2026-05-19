@@ -1,12 +1,10 @@
-import React from "react";
-
+import React from "react"; 
 import WK from "../assets/pieces/wK.svg";
 import WQ from "../assets/pieces/wQ.svg";
 import WR from "../assets/pieces/wR.svg";
 import WB from "../assets/pieces/wB.svg";
 import WN from "../assets/pieces/wN.svg";
-import WP from "../assets/pieces/wP.svg";
-
+import WP from "../assets/pieces/wP.svg"; 
 import BK from "../assets/pieces/bK.svg";
 import BQ from "../assets/pieces/bQ.svg";
 import BR from "../assets/pieces/bR.svg";
@@ -44,6 +42,9 @@ const Piece = ({ code, size = 40 }: Props) => {
 
   if (!SvgPiece) return null;
 
+
+
+  
   return <SvgPiece width={size} height={size} />;
 };
 

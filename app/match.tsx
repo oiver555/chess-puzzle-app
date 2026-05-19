@@ -17,6 +17,8 @@ import {
 
 } from "../logic/chessGame";
 import { Square, } from "chess.js";
+import AdBanner from "@/components/AdBanner";
+import EvalBar from "@/components/EvalBar";
 
 const moveSound = require("../assets/sounds/move.wav");
 const screenWidth = Dimensions.get("window").width;
@@ -31,6 +33,7 @@ const Match = () => {
 
     const movePlayer = useAudioPlayer(moveSound);
     const [selectedSquare, setSelectedSquare] = React.useState<Square | null>(null);
+    const [evalScore, setEvalScore] = React.useState<number>(0);
     const [legalMoves, setLegalMoves] = React.useState<Square[]>([]);
     const [refresh, setRefresh] = React.useState<number>(0);
     const [showExitModal, setShowExitModal] = React.useState<boolean>(false);
@@ -130,6 +133,14 @@ const Match = () => {
             if (!cleanOutput) { return }
             // console.log(cleanOutput);
 
+            const cpMatch = cleanOutput.match(/score cp (-?\d+)/);
+
+            if (cpMatch) {
+                const centipawns = Number(cpMatch[1]);
+                const score = centipawns / 100;
+                console.log("Centipawns: ", score);
+                setEvalScore(score);
+            }
 
             if (cleanOutput === "bestmove") {
                 waitingForBestMove.current = true;
@@ -164,9 +175,11 @@ const Match = () => {
     useEffect(() => {
         stockfishLoop();
         sendCommandToStockfish("uci");
+        sendCommandToStockfish("setoption name UCI_LimitStrength value true");
+        sendCommandToStockfish("setoption name UCI_Elo value 500");
         sendCommandToStockfish("isready");
         sendCommandToStockfish("ucinewgame");
-        sendCommandToStockfish(`position fen ${TEST_FEN}`);
+        sendCommandToStockfish(`position fen ${TEST_FEN}`); 
         setRefresh((prev) => prev + 1)
         if (playerColorRef.current === "b") {
             getAiMove();
@@ -272,6 +285,7 @@ const Match = () => {
                 </View>
             </Modal>
             <View style={styles.boardWrap}>
+                {/* <EvalBar score={evalScore} /> */}
                 <View style={styles.board}>
                     {Array.from({ length: 64 }).map((_, i) => {
                         const squareName = indexToSquare(i);
@@ -348,7 +362,7 @@ const Match = () => {
                                 }}
                             >
                                 {isLegalMove && <View style={styles.legalMoveDot} />}
-                               
+
                                 <Text style={styles.squareLabel}>{squareName}</Text>
                                 {pieceCode ? <Piece code={pieceCode} size={40} /> : <View style={{ width: 40, height: 40 }} />}
                             </Pressable>
@@ -375,9 +389,7 @@ const Match = () => {
                 }} />
             </View>
 
-            <View style={styles.adBox}>
-                <Text style={styles.adText}>Ad Banner</Text>
-            </View>
+            <AdBanner />
         </View>
 
 
@@ -467,9 +479,11 @@ const styles = StyleSheet.create({
         flexWrap: "wrap",
     },
     boardWrap: {
+        flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        transform: [{ rotateZ: 0 + "deg" }],
+        gap: 10,
+        paddingHorizontal: 10,
     },
     actions: {
         flexDirection: "row",

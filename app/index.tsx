@@ -28,6 +28,7 @@ const App = () => {
                     <MenuButton color="#25c900" label="PLAY VS COMPUTER" route="/computerSettings" />
                     <MenuButton color="#00bcd4" label="PUZZLES" />
                     <MenuButton color="#00d5c7" label="LEARN CHESS" />
+                    <MenuButton color="#00d5c7" label="LEARN OPENINGS" route="/learnOpenings" />
                 </View>
 
                 {/* Footer */}
