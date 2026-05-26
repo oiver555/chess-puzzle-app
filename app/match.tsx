@@ -4,7 +4,6 @@ import { useAudioPlayer } from "expo-audio";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect } from "react";
 import { Dimensions, Modal, Pressable, StyleSheet, Text, View, } from "react-native";
-import Piece, { PieceCode } from "../components/Piece";
 import {
     game,
     getCurrentBoard,
@@ -19,18 +18,25 @@ import {
 import { Square, } from "chess.js";
 import AdBanner from "@/components/AdBanner";
 import EvalBar from "@/components/EvalBar";
+import ChessBoard, { LastMove } from "@/components/Chessboard";
+import ActionButton from "@/components/ActionButton";
+import PromotionModal from "@/components/PromotionModal";
+import { COLORS } from "@/theme/colors";
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 
 const moveSound = require("../assets/sounds/move.wav");
-const screenWidth = Dimensions.get("window").width;
-const boardSize = screenWidth;
-const squareSize = boardSize / 8;
 const TEST_FEN = "8/P7/8/8/8/8/8/4k2K w - - 0 1";
+
+
 const Match = () => {
     const { side, level } = useLocalSearchParams<{
         side?: "w" | "b" | "r";
         level?: string;
     }>();
 
+
+    const [lastMove, setLastMove] = React.useState<LastMove>(null);
     const movePlayer = useAudioPlayer(moveSound);
     const [selectedSquare, setSelectedSquare] = React.useState<Square | null>(null);
     const [evalScore, setEvalScore] = React.useState<number>(0);
@@ -45,20 +51,6 @@ const Match = () => {
         from: Square;
         to: Square;
     } | null>(null);
-    const indexToSquare = (i: number): Square => {
-        const files = ["a", "b", "c", "d", "e", "f", "g", "h"] as const;
-        const row = Math.floor(i / 8);
-        const col = i % 8;
-
-        if (playerColorRef.current === "w") {
-            const rank = 8 - row;
-            return `${files[col]}${rank}` as Square;
-        } else {
-            const flippedFiles = [...files].reverse();
-            const rank = row + 1;
-            return `${flippedFiles[col]}${rank}` as Square;
-        }
-    };
 
     const handlePromotion = (promotion: "q" | "r" | "b" | "n") => {
         if (!promotionMove) return;
@@ -66,7 +58,10 @@ const Match = () => {
         playMoveSound();
 
         movePiece(promotionMove.from, promotionMove.to, promotion);
-
+        setLastMove({
+            from: promotionMove.from,
+            to: promotionMove.to,
+        });
         setPromotionMove(null);
         setSelectedSquare(null);
         setLegalMoves([]);
@@ -124,7 +119,6 @@ const Match = () => {
         // movePlayer.play();
     }
 
-
     const waitingForBestMove = React.useRef(false);
 
     const { stockfishLoop, sendCommandToStockfish } = useStockfish({
@@ -156,6 +150,10 @@ const Match = () => {
                     const promotion = bestMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
                     playMoveSound()
                     moveAiPiece(from, to, promotion || undefined);
+                    setLastMove({
+                        from,
+                        to,
+                    });
                     const status = checkGameStatus();
                     if (status === "check") {
 
@@ -172,6 +170,58 @@ const Match = () => {
         }, []),
     });
 
+    const handleSquarePress = (squareName: Square) => {
+        const piece = getPieceAtSquare(squareName);
+
+        if (selectedSquare && legalMoves.includes(squareName)) {
+            const moves = game.moves({
+                square: selectedSquare,
+                verbose: true,
+            });
+
+            const selectedMove = moves.find((move) => move.to === squareName);
+
+            if (selectedMove?.isPromotion()) {
+                setPromotionMove({
+                    from: selectedSquare,
+                    to: squareName,
+                });
+                return;
+            }
+
+            playMoveSound();
+            movePiece(selectedSquare, squareName);
+            setLastMove({
+                from: selectedSquare,
+                to: squareName,
+            });
+            setSelectedSquare(null);
+            setLegalMoves([]);
+            setRefresh((prev) => prev + 1);
+
+            const status = checkGameStatus();
+
+            if (
+                status === "checkmate" ||
+                status === "stalemate" ||
+                status === "draw"
+            ) {
+                return;
+            }
+
+            getAiMove();
+            return;
+        }
+
+        if (piece && piece.color === playerColorRef.current) {
+            setSelectedSquare(squareName);
+            setLegalMoves(getLegalMoves(squareName));
+        } else {
+            setSelectedSquare(null);
+            setLegalMoves([]);
+        }
+    };
+
     useEffect(() => {
         stockfishLoop();
         sendCommandToStockfish("uci");
@@ -179,7 +229,8 @@ const Match = () => {
         sendCommandToStockfish("setoption name UCI_Elo value 500");
         sendCommandToStockfish("isready");
         sendCommandToStockfish("ucinewgame");
-        sendCommandToStockfish(`position fen ${TEST_FEN}`); 
+        // sendCommandToStockfish(`position fen ${TEST_FEN}`);
+        // game.load(TEST_FEN);
         setRefresh((prev) => prev + 1)
         if (playerColorRef.current === "b") {
             getAiMove();
@@ -196,31 +247,11 @@ const Match = () => {
         };
     }, []);
 
-    function ActionButton({ icon, label, onPress }: { icon: string, label: string, onPress: () => void }) {
-        return (
-            <Pressable style={styles.actionItem} onPress={onPress}>
-                <View style={styles.actionCircle}>
-                    <Text style={styles.actionIcon}>{icon}</Text>
-                </View>
-                <Text style={styles.actionLabel}>{label}</Text>
-            </Pressable>
-        );
-    }
+
 
     return (
 
         <View style={styles.screen}>
-            <View style={styles.header}>
-                <Text style={styles.level}>LEVEL {level}</Text>
-                <Text style={styles.rank}>{getLevelName(Number(level))}</Text>
-            </View>
-
-            <View style={styles.backRow}>
-                <Pressable onPress={() => setShowExitModal(true)}>
-                    <Text style={styles.back}>‹</Text>
-                </Pressable>
-            </View>
-
             <Modal
                 visible={showExitModal}
                 transparent
@@ -236,160 +267,130 @@ const Match = () => {
                         </Text>
 
                         <View style={styles.modalActions}>
-                            <Pressable onPress={() => setShowExitModal(false)}>
-                                <Text>Cancel</Text>
-                            </Pressable>
-
-                            <Pressable onPress={() => {
-                                setSelectedSquare(null);
-                                setLegalMoves([]);
-                                setRefresh((prev) => prev + 1);
-                                router.back();
-                            }}>
-                                <Text>Leave</Text>
-                            </Pressable>
-                        </View>
-                    </View>
-                </View>
-            </Modal>
-            <Modal
-                visible={promotionMove !== null}
-                transparent
-                animationType="fade"
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalBox}>
-                        <Text style={styles.modalTitle}>Promote Pawn</Text>
-
-                        <View style={styles.promotionRow}>
-                            {(["q", "r", "b", "n"] as const).map((piece) => (
-                                <Pressable
-                                    key={piece}
-                                    style={styles.promotionButton}
-                                    onPress={() => handlePromotion(piece)}
-                                >
-
-                                    <Piece
-                                        code={
-                                            playerColorRef.current === "w"
-                                                ? piece.toUpperCase() as PieceCode
-                                                : piece as PieceCode
-                                        }
-                                        size={42}
-                                    />
-
-                                </Pressable>
-                            ))}
-                        </View>
-                    </View>
-                </View>
-            </Modal>
-            <View style={styles.boardWrap}>
-                {/* <EvalBar score={evalScore} /> */}
-                <View style={styles.board}>
-                    {Array.from({ length: 64 }).map((_, i) => {
-                        const squareName = indexToSquare(i);
-                        const isSelected = selectedSquare === squareName;
-                        // @ts-ignore
-                        const chessPiece = getPieceAtSquare(squareName);
-                        // console.log(chessPiece);
-                        const isLegalMove = legalMoves.includes(squareName);
-                        const row = Math.floor(i / 8);
-                        const col = i % 8;
-                        const isDark = (row + col) % 2 === 1;
-                        const pieceCode: PieceCode | null = chessPiece
-                            ? chessPiece.color === "w"
-                                ? chessPiece.type.toUpperCase() as PieceCode
-                                : chessPiece.type
-                            : null;
-                        return (
                             <Pressable
-                                key={i}
-                                style={[
-                                    styles.square,
-                                    { backgroundColor: isCheckmate && squareInCheck === squareName ? "red" : isDark ? "blue" : "green" },
-                                    isSelected && { backgroundColor: "yellow" },
-                                ]}
-                                onPress={() => {
-                                    const piece = getPieceAtSquare(squareName);
-
-                                    if (selectedSquare && legalMoves.includes(squareName)) {
-
-
-                                        const moves = game.moves({
-                                            square: selectedSquare,
-                                            verbose: true,
-                                        });
-
-                                        const selectedMove = moves.find((move) => move.to === squareName);
-
-                                        if (selectedMove?.isPromotion()) {
-                                            setPromotionMove({
-                                                from: selectedSquare,
-                                                to: squareName,
-                                            });
-                                            return;
-                                        }
-                                        playMoveSound()
-                                        movePiece(selectedSquare, squareName);
-                                        setSelectedSquare(null);
-                                        setLegalMoves([]);
-                                        setRefresh((prev) => prev + 1);
-
-                                        const status = checkGameStatus();
-
-
-                                        if (status === "checkmate" || status === "stalemate" || status === "draw") {
-                                            return;
-                                        }
-                                        if (status === "check") {
-                                            console.log("check");
-                                        }
-
-                                        getAiMove();
-                                        return;
-                                    }
-
-                                    if (piece && piece.color === playerColorRef.current) {
-                                        setSelectedSquare(squareName);
-                                        setLegalMoves(getLegalMoves(squareName));
-                                        // console.log(piece);
-                                    } else {
-                                        setSelectedSquare(null);
-                                        setLegalMoves([]);
-                                        // console.log(squareName);
-                                    }
-                                }}
+                                onPress={() => setShowExitModal(false)}
+                                style={[styles.modalButton, styles.cancelButton]}
                             >
-                                {isLegalMove && <View style={styles.legalMoveDot} />}
-
-                                <Text style={styles.squareLabel}>{squareName}</Text>
-                                {pieceCode ? <Piece code={pieceCode} size={40} /> : <View style={{ width: 40, height: 40 }} />}
+                                <Text style={styles.cancelButtonText}>Cancel</Text>
                             </Pressable>
-                        );
-                    })}
+
+                            <Pressable
+                                onPress={() => {
+                                    setSelectedSquare(null);
+                                    setLegalMoves([]);
+                                    setRefresh((prev) => prev + 1);
+                                    router.back();
+                                }}
+                                style={[styles.modalButton, styles.leaveButton]}
+                            >
+                                <Text style={styles.leaveButtonText}>Leave</Text>
+                            </Pressable>
+                        </View>
+                    </View>
                 </View>
+            </Modal>
+
+            <PromotionModal visible={promotionMove !== null} playerColor={playerColorRef.current} onPromote={handlePromotion} />
+            <LinearGradient colors={[COLORS.header.dark, COLORS.header.dark2]} style={styles.header}>
+                <Text style={styles.level}>LEVEL</Text>
+                <Text style={styles.rank}>SKILLED</Text>
+            </LinearGradient>
+
+            <View style={styles.backRow}>
+                <Pressable
+                    onPress={() => setShowExitModal(true)}
+                    style={styles.backButton}
+                >
+                    <Ionicons name="chevron-back" size={28} color="#fff" />
+                </Pressable>
             </View>
-
-            <View style={styles.actions}>
-                <ActionButton icon="↻" label="RESTART" onPress={() => {
-                    sendCommandToStockfish("ucinewgame");
-                    sendCommandToStockfish("position startpos");
-                    resetGame()
-                    setSelectedSquare(null);
-                    setRefresh((prev) => prev + 1)
-                }} />
-                <ActionButton icon="♜" label="PIECES" onPress={() => sendCommandToStockfish("isready")} />
-                <ActionButton icon="↩" label="UNDO" onPress={() => {
-                    undoMove();
-
-                }} />
-                <ActionButton icon="💡" label="HINT" onPress={() => {
-                    sendCommandToStockfish("d");
-                }} />
+            <View style={styles.settingsRow}>
+                <Pressable
+                    onPress={() => {
+                        // open settings
+                    }}
+                    style={styles.settingsButton}
+                >
+                    <Ionicons
+                        name="settings-sharp"
+                        size={24}
+                        color="#fff"
+                    />
+                </Pressable>
             </View>
+            <View style={styles.content}>
+                <View style={styles.boardWrap}>
+                    {/* <EvalBar score={evalScore} /> */}
+                    <View style={styles.board}>
+                        <ChessBoard
+                            selectedSquare={selectedSquare}
+                            legalMoves={legalMoves}
+                            playerColor={playerColorRef.current}
+                            isCheckmate={isCheckmate}
+                            squareInCheck={squareInCheck}
+                            getPieceAtSquare={getPieceAtSquare}
+                            onSquarePress={handleSquarePress}
+                            lastMove={lastMove}
+                        />
+                    </View>
+                </View>
 
-            <AdBanner />
+                <View style={styles.actions}>
+                    <ActionButton
+                        icon={
+                            <Ionicons
+                                name="refresh"
+                                size={34}
+                                color={COLORS.board.border}
+
+                            />
+                        }
+                        label="RESTART" onPress={() => {
+                            sendCommandToStockfish("ucinewgame");
+                            sendCommandToStockfish("position startpos");
+                            resetGame()
+                            setSelectedSquare(null);
+                            setRefresh((prev) => prev + 1)
+                        }} />
+                    <ActionButton
+                        icon={
+                            <MaterialCommunityIcons
+                                name="chess-rook"
+                                size={34}
+                                color={COLORS.board.border}
+                            />
+                        }
+                        label="PIECES" onPress={() => sendCommandToStockfish("isready")} />
+                    <ActionButton
+                        icon={
+                            <Ionicons
+                                name="arrow-undo"
+                                size={34}
+                                color={COLORS.board.border}
+
+                            />
+                        }
+                        label="UNDO" onPress={() => {
+                            undoMove();
+
+                        }} />
+                    <ActionButton
+                        icon={
+                            <Ionicons
+                                name="bulb"
+                                size={34}
+                                color={COLORS.board.border}
+                            />
+                        }
+                        label="HINT" onPress={() => {
+                            sendCommandToStockfish("d");
+                        }} />
+                </View>
+
+            </View>
+            <View style={{ width: "100%" }}>
+                <AdBanner />
+            </View>
         </View>
 
 
@@ -398,6 +399,95 @@ const Match = () => {
 }
 
 const styles = StyleSheet.create({
+    settingsRow: {
+        position: "absolute",
+        top: 55,
+        right: 24,
+        zIndex: 10,
+    },
+
+    settingsButton: {
+        width: 48,
+        height: 48,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.2)",
+        backgroundColor: "rgba(255,255,255,0.08)",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0, 0, 0, 0.68)",
+        justifyContent: "center",
+        alignItems: "center",
+        paddingHorizontal: 24,
+    },
+
+    modalBox: {
+        width: "100%",
+        backgroundColor: COLORS.background,
+        borderWidth: 2,
+        borderColor: COLORS.board.border,
+        borderRadius: 24,
+        padding: 24,
+    },
+
+    modalTitle: {
+        color: COLORS.text.primary,
+        fontSize: 26,
+        fontWeight: "900",
+        textAlign: "center",
+        letterSpacing: 0.5,
+    },
+
+    modalText: {
+        color: COLORS.text.muted,
+        fontSize: 16,
+        textAlign: "center",
+        lineHeight: 23,
+        marginTop: 14,
+        marginBottom: 24,
+    },
+
+    modalActions: {
+        flexDirection: "row",
+        gap: 12,
+    },
+
+    modalButton: {
+        flex: 1,
+        height: 52,
+        borderRadius: 16,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+
+    cancelButton: {
+        backgroundColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.18)",
+    },
+
+    leaveButton: {
+        backgroundColor: COLORS.board.border,
+    },
+
+    cancelButtonText: {
+        color: COLORS.text.primary,
+        fontSize: 15,
+        fontWeight: "800",
+    },
+
+    leaveButtonText: {
+        color: COLORS.background,
+        fontSize: 15,
+        fontWeight: "900",
+    },
+    content: {
+        flex: 1,
+        justifyContent: "space-evenly",
+    },
     captureRing: {
         position: "absolute",
         width: 52,
@@ -441,36 +531,53 @@ const styles = StyleSheet.create({
     },
     screen: {
         flex: 1,
-        backgroundColor: "#06282d",
+        backgroundColor: COLORS.background
     },
     header: {
-        height: 120,
-        backgroundColor: "#7a330f",
-        borderBottomWidth: 4,
-        borderBottomColor: "#f5c542",
+        height: 150,
+        justifyContent: "center",
+        alignItems: "center",
+        borderBottomWidth: 3,
+        borderBottomColor: COLORS.board.border,
+        backgroundColor: COLORS.background,
+    },
+    level: {
+        color: COLORS.text.muted,
+        fontSize: 18,
+        fontWeight: "900",
+        letterSpacing: 1,
+        marginBottom: 10,
+    },
+    rank: {
+        color: COLORS.text.primary,
+        fontSize: 34,
+        fontWeight: "900",
+        marginTop: 6,
+        letterSpacing: 1,
+    },
+    backRow: {
+        position: "absolute",
+        top: 55,
+        left: 24,
+        zIndex: 10,
+    },
+
+    backButton: {
+        width: 48,
+        height: 48,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.2)",
+        backgroundColor: "rgba(255,255,255,0.08)",
         justifyContent: "center",
         alignItems: "center",
     },
-    level: {
-        color: "#f5c542",
-        fontSize: 18,
-        fontWeight: "900",
-    },
-    rank: {
-        color: "#fff",
-        fontSize: 20,
-        fontWeight: "900",
-        marginTop: 6,
-    },
-    backRow: {
-        height: 70,
-        justifyContent: "center",
-        paddingLeft: 20,
-    },
+
     back: {
-        color: "#f5c542",
-        fontSize: 72,
-        fontWeight: "900",
+        color: COLORS.text.primary,
+        fontSize: 54,
+        fontWeight: "700",
+        marginTop: -6,
     },
     board: {
         width: "100%",
@@ -488,7 +595,6 @@ const styles = StyleSheet.create({
     actions: {
         flexDirection: "row",
         justifyContent: "space-around",
-        marginTop: 32,
         paddingHorizontal: 16,
     },
     actionItem: {
@@ -531,36 +637,7 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         alignItems: "center",
     },
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: "rgba(0,0,0,0.6)",
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    modalBox: {
-        width: "82%",
-        backgroundColor: "#7a330f",
-        borderWidth: 4,
-        borderColor: "#f5c542",
-        borderRadius: 14,
-        padding: 20,
-    },
-    modalTitle: {
-        color: "#fff",
-        fontSize: 24,
-        fontWeight: "900",
-        textAlign: "center",
-    },
-    modalText: {
-        color: "#f5c542",
-        fontSize: 16,
-        textAlign: "center",
-        marginVertical: 18,
-    },
-    modalActions: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-    },
+
     squareLabel: {
         position: "absolute",
         top: 2,
@@ -569,6 +646,7 @@ const styles = StyleSheet.create({
         color: "orange",
         fontWeight: "bold",
         zIndex: 10,
+        opacity: 0.55,
     },
 });
 
