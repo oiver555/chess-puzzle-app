@@ -1,41 +1,33 @@
-import { getLevelName } from "@/util/chessUtils";
+import ActionButton from "@/components/ActionButton";
+import AdBanner from "@/components/AdBanner";
+import ChessBoard from "@/components/Chessboard";
+import PromotionModal from "@/components/PromotionModal";
+import { COLORS } from "@/theme/colors";
+import { LastMove } from "@/types/match";
+import { clearMatchState, loadMatchState, saveAppState, saveMatchState } from "@/util/storage";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useStockfish } from "@loloof64/react-native-stockfish";
+import { Square } from "chess.js";
 import { useAudioPlayer } from "expo-audio";
-import { router, useLocalSearchParams } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import { router, useLocalSearchParams, usePathname } from "expo-router";
 import React, { useCallback, useEffect } from "react";
-import { Dimensions, Modal, Pressable, StyleSheet, Text, View, } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import {
     game,
-    getCurrentBoard,
     getFen,
     getLegalMoves,
     getPieceAtSquare,
     moveAiPiece,
     movePiece,
-    resetGame,
-
+    resetGame
 } from "../logic/chessGame";
-import { Square, } from "chess.js";
-import AdBanner from "@/components/AdBanner";
-import EvalBar from "@/components/EvalBar";
-import ChessBoard, { LastMove } from "@/components/Chessboard";
-import ActionButton from "@/components/ActionButton";
-import PromotionModal from "@/components/PromotionModal";
-import { COLORS } from "@/theme/colors";
-import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 
 const moveSound = require("../assets/sounds/move.wav");
 const TEST_FEN = "8/P7/8/8/8/8/8/4k2K w - - 0 1";
 
-
 const Match = () => {
-    const { side, level } = useLocalSearchParams<{
-        side?: "w" | "b" | "r";
-        level?: string;
-    }>();
-
-
+    const { side, difficulty } = useLocalSearchParams<{ side?: "w" | "b" | "r"; difficulty?: string; }>();
     const [lastMove, setLastMove] = React.useState<LastMove>(null);
     const movePlayer = useAudioPlayer(moveSound);
     const [selectedSquare, setSelectedSquare] = React.useState<Square | null>(null);
@@ -54,10 +46,24 @@ const Match = () => {
 
     const handlePromotion = (promotion: "q" | "r" | "b" | "n") => {
         if (!promotionMove) return;
+        const from = promotionMove.from;
+        const to = promotionMove.to;
+
+        if (!from) return;
 
         playMoveSound();
 
         movePiece(promotionMove.from, promotionMove.to, promotion);
+        saveMatchState({
+            fen: getFen(),
+            playerColor: playerColorRef.current,
+            aiColor: aiSideRef.current,
+            lastMove: {
+                from,
+                to,
+            },
+            savedAt: new Date().toISOString(),
+        });
         setLastMove({
             from: promotionMove.from,
             to: promotionMove.to,
@@ -77,10 +83,16 @@ const Match = () => {
         getAiMove();
     };
 
+
     const getAiMove = async () => {
+        if (difficulty === "rookie") {
+            playRookieMove();
+            return;
+        }
+
         const fen = getFen();
         sendCommandToStockfish(`position fen ${fen}`);
-        sendCommandToStockfish("go movetime 1000 depth 6");
+        sendCommandToStockfish("go movetime 1000 depth 1");
     };
 
     const checkGameStatus = () => {
@@ -113,10 +125,16 @@ const Match = () => {
         setSquareInCheck("");
         setRefresh((prev) => prev + 1);
     };
+    console.log(movePlayer.isLoaded);
+    console.log(movePlayer.isBuffering);
 
     const playMoveSound = () => {
-        // movePlayer.seekTo(0);
-        // movePlayer.play();
+        console.log("Playsound");
+
+        movePlayer.seekTo(0);
+        setTimeout(() => {
+            movePlayer.play();
+        }, 100);
     }
 
     const waitingForBestMove = React.useRef(false);
@@ -150,6 +168,16 @@ const Match = () => {
                     const promotion = bestMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
                     playMoveSound()
                     moveAiPiece(from, to, promotion || undefined);
+                    saveMatchState({
+                        fen: getFen(),
+                        playerColor: playerColorRef.current,
+                        aiColor: aiSideRef.current,
+                        lastMove: {
+                            from,
+                            to,
+                        },
+                        savedAt: new Date().toISOString(),
+                    });
                     setLastMove({
                         from,
                         to,
@@ -191,6 +219,16 @@ const Match = () => {
 
             playMoveSound();
             movePiece(selectedSquare, squareName);
+            saveMatchState({
+                fen: getFen(),
+                playerColor: playerColorRef.current,
+                aiColor: aiSideRef.current,
+                lastMove: {
+                    from: selectedSquare,
+                    to: squareName,
+                },
+                savedAt: new Date().toISOString(),
+            });
             setLastMove({
                 from: selectedSquare,
                 to: squareName,
@@ -222,32 +260,101 @@ const Match = () => {
         }
     };
 
+    const playRookieMove = () => {
+        const moves = game.moves({ verbose: true });
+
+        if (moves.length === 0) return;
+
+        const randomMove =
+            moves[Math.floor(Math.random() * moves.length)];
+
+        setTimeout(() => {
+            playMoveSound();
+
+            moveAiPiece(
+                randomMove.from,
+                randomMove.to,
+                randomMove.promotion as
+                | "q"
+                | "r"
+                | "b"
+                | "n"
+                | undefined
+            );
+
+            saveMatchState({
+                fen: getFen(),
+                playerColor: playerColorRef.current,
+                aiColor: aiSideRef.current,
+                lastMove: {
+                    from: randomMove.from,
+                    to: randomMove.to,
+                },
+                savedAt: new Date().toISOString(),
+            });
+
+            setLastMove({
+                from: randomMove.from,
+                to: randomMove.to,
+            });
+
+            setRefresh((prev) => prev + 1);
+
+        }, 1000);
+    };
+
+    const pathname = usePathname()
     useEffect(() => {
         stockfishLoop();
         sendCommandToStockfish("uci");
         sendCommandToStockfish("setoption name UCI_LimitStrength value true");
-        sendCommandToStockfish("setoption name UCI_Elo value 500");
+        sendCommandToStockfish("setoption name UCI_Elo value 400");
         sendCommandToStockfish("isready");
         sendCommandToStockfish("ucinewgame");
-        // sendCommandToStockfish(`position fen ${TEST_FEN}`);
         // game.load(TEST_FEN);
         setRefresh((prev) => prev + 1)
-        if (playerColorRef.current === "b") {
-            getAiMove();
-        }
-
+        movePlayer.seekTo(0);
         return () => {
             setSelectedSquare(null);
             setLegalMoves([]);
-            setRefresh((prev) => prev + 1);
-            resetGame()
             sendCommandToStockfish("stop");
-            sendCommandToStockfish("ucinewgame");
-            sendCommandToStockfish("position startpos");
+            resetGame();
         };
     }, []);
 
+    useEffect(() => {
+        saveAppState({
+            lastRoute: pathname,
+            savedAt: new Date().toISOString(),
+        });
 
+        async function restoreMatch() {
+
+            const saved = await loadMatchState();
+
+            if (!saved) {
+                if (playerColorRef.current === "b") {
+                    getAiMove();
+                }
+                return;
+            }
+
+            game.load(saved.fen);
+
+            setRefresh(prev => prev + 1)
+
+            if (saved.lastMove) {
+                setLastMove(saved.lastMove);
+            }
+
+            if (game.turn() === aiSideRef.current) {
+                getAiMove();
+            }
+
+        }
+
+        restoreMatch();
+    }, []);
 
     return (
 
@@ -276,11 +383,22 @@ const Match = () => {
 
                             <Pressable
                                 onPress={() => {
+                                    clearMatchState();
+                                    resetGame();
+
                                     setSelectedSquare(null);
                                     setLegalMoves([]);
+                                    setLastMove(null);
                                     setRefresh((prev) => prev + 1);
-                                    router.back();
+
+                                    sendCommandToStockfish("stop");
+                                    sendCommandToStockfish("ucinewgame");
+
+                                    setTimeout(() => {
+                                        router.replace("ComputerSettings");
+                                    }, 100)
                                 }}
+
                                 style={[styles.modalButton, styles.leaveButton]}
                             >
                                 <Text style={styles.leaveButtonText}>Leave</Text>
@@ -293,7 +411,7 @@ const Match = () => {
             <PromotionModal visible={promotionMove !== null} playerColor={playerColorRef.current} onPromote={handlePromotion} />
             <LinearGradient colors={[COLORS.header.dark, COLORS.header.dark2]} style={styles.header}>
                 <Text style={styles.level}>LEVEL</Text>
-                <Text style={styles.rank}>SKILLED</Text>
+                <Text style={styles.rank}>{difficulty}</Text>
             </LinearGradient>
 
             <View style={styles.backRow}>
@@ -346,6 +464,7 @@ const Match = () => {
                             />
                         }
                         label="RESTART" onPress={() => {
+                            clearMatchState();
                             sendCommandToStockfish("ucinewgame");
                             sendCommandToStockfish("position startpos");
                             resetGame()

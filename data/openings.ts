@@ -21,6 +21,22 @@ export type Opening = {
     moveDetails: MoveDetail[];
 };
 
+export function calculateMastery(progress?: OpeningProgress) {
+  if (!progress || progress.totalAttempts === 0) return 0;
+
+  const accuracy = progress.correctMoves / progress.totalAttempts;
+  const repScore = Math.min(progress.completedReps / 10, 1);
+
+  return Math.round((accuracy * 0.7 + repScore * 0.3) * 100);
+}
+
+export type OpeningProgress = {
+  openingEco: string;
+  completedReps: number;
+  correctMoves: number;
+  totalAttempts: number;
+  lastPracticedAt?: string;
+};
 
 export const openings: Opening[] = [
     {

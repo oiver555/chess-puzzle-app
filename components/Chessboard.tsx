@@ -4,23 +4,7 @@ import { PieceCode } from "./Piece";
 import AnimatedPiece from "./AnimatedPiece";
 import { useState } from "react";
 import { COLORS } from "../theme/colors";
-
-export type LastMove = {
-  from: Square;
-  to: Square;
-} | null;
-
-type ChessBoardProps = {
-  selectedSquare: Square | null;
-  legalMoves: Square[];
-  playerColor: "w" | "b";
-  isCheckmate: boolean;
-  squareInCheck: Square | "";
-  getPieceAtSquare: (square: Square) => any;
-  onSquarePress: (square: Square) => void;
-  lastMove: LastMove;
-};
-
+import { ChessBoardProps } from "@/types/match";
 
 export default function ChessBoard({
   selectedSquare,
@@ -108,10 +92,7 @@ export default function ChessBoard({
   const pieceSize = boardSize / 8;
 
   return (
-    <View style={[
-      styles.board,
-      boardSize > 0 && { height: boardSize },
-    ]}
+    <View style={[styles.board, boardSize > 0 && { height: boardSize }]}
       onLayout={(event) => {
         setBoardSize(event.nativeEvent.layout.width);
       }}

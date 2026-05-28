@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -9,8 +9,9 @@ import {
   Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, usePathname } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { saveAppState } from "@/util/storage";
 
 const { width, height } = Dimensions.get("window");
 
@@ -62,10 +63,21 @@ export default function ComputerSettings() {
   const [side, setSide] = useState<"w" | "r" | "b">("w");
   const [difficulty, setDifficulty] = useState("rookie");
 
+  const pathname = usePathname()
+
+  useEffect(() => {
+    saveAppState({
+      lastRoute: pathname,
+      savedAt: new Date().toISOString(),
+    });
+  })
+
+
+
   return (
     <View style={styles.screen}>
       <LinearGradient colors={[COLORS.dark, COLORS.dark2]} style={styles.header}>
-        <Pressable style={styles.headerButton} onPress={() => router.back()}>
+        <Pressable style={styles.headerButton} onPress={() => router.replace("/")}>
           <Ionicons name="chevron-back" size={28} color="#fff" />
         </Pressable>
 
@@ -150,15 +162,12 @@ export default function ComputerSettings() {
                 </View>
 
                 <View style={styles.diffText}>
-                  <Text 
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  style={[styles.diffTitle, active && styles.diffTitleActive]}>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    style={[styles.diffTitle, active && styles.diffTitleActive]}>
                     {item.title}
-                  </Text>
-                  {/* <Text style={[styles.diffSubtitle, active && styles.diffSubtitleActive]}>
-                    {item.subtitle}
-                  </Text> */}
+                  </Text> 
                 </View>
 
                 <Text style={[styles.elo, active && styles.eloActive]}>
@@ -231,7 +240,7 @@ function SideOption({
       <MaterialCommunityIcons
         name={icon}
         size={isSmallPhone ? 34 : 42}
-        color={active && darkPiece ? "#fff"  : darkPiece ? "#151515" : active ? "#fff" : COLORS.text}
+        color={active && darkPiece ? "#fff" : darkPiece ? "#151515" : active ? "#fff" : COLORS.text}
       />
       <Text style={[styles.sideLabel, active && styles.sideLabelActive]}>{label}</Text>
     </Pressable>
@@ -305,7 +314,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     width,
     height: "100%",
-    opacity: 1, 
+    opacity: 1,
   },
 
   heroText: {
@@ -442,7 +451,7 @@ const styles = StyleSheet.create({
 
   diffText: {
     flex: 1,
-    minWidth:0,
+    minWidth: 0,
     paddingRight: 10
   },
 

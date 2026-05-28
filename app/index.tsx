@@ -13,6 +13,7 @@ import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from "@expo/vector-ico
 import { router } from "expo-router";
 import * as NavigationBar from "expo-navigation-bar";
 import { useEffect } from "react";
+import { loadAppState } from "@/util/storage";
 
 const { width, height } = Dimensions.get("window");
 
@@ -43,7 +44,20 @@ export default function App() {
         return () => {
             NavigationBar.setVisibilityAsync("visible");
         };
-    }, []); 
+    }, []);
+
+
+    useEffect(() => {
+        async function restoreLastScreen() {
+            const saved = await loadAppState();
+
+            if (saved?.lastRoute === "/Match") {
+                router.replace(saved.lastRoute);
+            }
+        }
+
+        restoreLastScreen();
+    }, []);
     return (
         <View style={styles.screen}>
             <LinearGradient colors={[COLORS.dark, COLORS.dark2]} style={styles.header}>
@@ -216,9 +230,9 @@ const styles = StyleSheet.create({
         paddingTop: isSmallPhone ? 30 : 40,
         paddingHorizontal: 22,
         paddingBottom: isSmallPhone ? 14 : 20,
-        
-    borderBottomColor: COLORS.gold,
-    borderBottomWidth: 3,
+
+        borderBottomColor: COLORS.gold,
+        borderBottomWidth: 3,
     },
 
     avatar: {
