@@ -14,12 +14,13 @@ import { router } from "expo-router";
 import * as NavigationBar from "expo-navigation-bar";
 import { useEffect } from "react";
 import { loadAppState } from "@/util/storage";
+import { SettingsModal } from "@/components/SettingsModal";
+import { openings } from "@/data/openings";
 
 const { width, height } = Dimensions.get("window");
 
 const isSmallPhone = height < 700;
 const isNarrowPhone = width < 380;
-
 const scale = (size: number) => {
     const baseWidth = 390;
     return Math.round((width / baseWidth) * size);
@@ -37,6 +38,7 @@ const COLORS = {
 
 export default function App() {
 
+    const [showSettings, setShowSettings] = React.useState(false);
 
     useEffect(() => {
         NavigationBar.setVisibilityAsync("hidden");
@@ -60,6 +62,7 @@ export default function App() {
     }, []);
     return (
         <View style={styles.screen}>
+            <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
             <LinearGradient colors={[COLORS.dark, COLORS.dark2]} style={styles.header}>
                 <View style={styles.profileRow}>
                     <Image
@@ -70,15 +73,15 @@ export default function App() {
                     <View style={styles.profileInfo}>
                         <Text numberOfLines={3} adjustsFontSizeToFit style={styles.name}>CHESSMASTER</Text>
 
-                        <View style={styles.rankRow}>
+                        {/* <View style={styles.rankRow}>
                             <Ionicons name="book" size={18} color={COLORS.gold} />
                             <Text style={styles.rank}>OPENING SCHOLAR</Text>
-                        </View>
+                        </View> */}
 
 
                         <View style={styles.progressContainer}>
                             <View style={styles.progressTrack}>
-                                <View style={[styles.progressFill, { width: "42%" }]} />
+                                <View style={[styles.progressFill, { width: "0%" }]} />
 
                                 <View style={styles.progressContent}>
                                     <Text style={styles.progressLabel}>
@@ -86,7 +89,7 @@ export default function App() {
                                     </Text>
 
                                     <Text style={styles.progressText}>
-                                        42 / 100
+                                        0 / {openings.length}
                                     </Text>
                                 </View>
                             </View>
@@ -95,7 +98,7 @@ export default function App() {
 
 
 
-                    <Pressable style={styles.headerIcon}>
+                    <Pressable style={styles.headerIcon} onPress={() => setShowSettings(true)}>
                         <Ionicons name="settings" size={25} color="#EDE7DA" />
                     </Pressable>
                 </View>
@@ -185,16 +188,6 @@ function MenuCard({
     );
 }
 
-function BottomNav() {
-    return (
-        <View style={styles.bottomNav}>
-            <NavItem icon="home" label="HOME" active />
-            <NavItem icon="navigate-circle-outline" label="MISSIONS" />
-            <NavItem icon="horse-variant" label="COLLECTION" material />
-            <NavItem icon="person" label="PROFILE" />
-        </View>
-    );
-}
 
 function NavItem({
     icon,
@@ -385,14 +378,14 @@ const styles = StyleSheet.create({
     },
 
     progressLabel: {
-        color: "#FFFFFF",
+        color: "#d0d0d0",
         fontSize: 11,
         fontWeight: "800",
         letterSpacing: 1,
     },
 
     progressText: {
-        color: "#FFFFFF",
+        color: "#d0d0d0",
         fontSize: 11,
         fontWeight: "900",
     },
@@ -418,7 +411,7 @@ const styles = StyleSheet.create({
     },
 
     boardPattern: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         width: "100%",
         height: 430,
         opacity: 0.55,

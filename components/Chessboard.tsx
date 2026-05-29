@@ -1,20 +1,21 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Square } from "chess.js";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react"; import { Square } from "chess.js";
 import { PieceCode } from "./Piece";
 import AnimatedPiece from "./AnimatedPiece";
-import { useState } from "react";
 import { COLORS } from "../theme/colors";
 import { ChessBoardProps } from "@/types/match";
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export default function ChessBoard({
   selectedSquare,
   legalMoves,
   playerColor,
-  isCheckmate,
   squareInCheck,
   getPieceAtSquare,
   onSquarePress,
   lastMove,
+  illegalSquare,
+  onSquarePressIn
 }: ChessBoardProps) {
   const [boardSize, setBoardSize] = useState(0);
 
@@ -51,6 +52,44 @@ export default function ChessBoard({
     };
   };
 
+  const checkFlash = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!squareInCheck) {
+      checkFlash.setValue(0);
+      return;
+    }
+
+    checkFlash.setValue(0);
+
+    Animated.sequence([
+      Animated.timing(checkFlash, {
+        toValue: 1,
+        duration: 120,
+        useNativeDriver: false,
+      }),
+      Animated.timing(checkFlash, {
+        toValue: 0,
+        duration: 120,
+        useNativeDriver: false,
+      }),
+      Animated.timing(checkFlash, {
+        toValue: 1,
+        duration: 120,
+        useNativeDriver: false,
+      }),
+      Animated.timing(checkFlash, {
+        toValue: 0,
+        duration: 120,
+        useNativeDriver: false,
+      }),
+      Animated.timing(checkFlash, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [squareInCheck]);
 
   const squares = Array.from({ length: 64 });
 
@@ -58,6 +97,7 @@ export default function ChessBoard({
     .map((_, i) => {
       const squareName = indexToSquare(i);
       const chessPiece = getPieceAtSquare(squareName);
+
 
       if (!chessPiece) return null;
 
@@ -90,6 +130,14 @@ export default function ChessBoard({
 
 
   const pieceSize = boardSize / 8;
+const computerColor = playerColor === "w" ? "b" : "w";
+
+const lastMovedPiece = lastMove
+    ? getPieceAtSquare(lastMove.to)
+    : null;
+
+const wasComputerMove =
+    lastMovedPiece?.color === computerColor;
 
   return (
     <View style={[styles.board, boardSize > 0 && { height: boardSize }]}
@@ -101,13 +149,31 @@ export default function ChessBoard({
         const squareName = indexToSquare(i);
         const isSelected = selectedSquare === squareName;
         const isLegalMove = legalMoves.includes(squareName);
-
+        const isCheckedSquare = squareName === squareInCheck;
         const row = Math.floor(i / 8);
         const col = i % 8;
         const isDark = (row + col) % 2 === 1;
 
+        const isIllegalSquare = illegalSquare === squareName;
+          
+
+        const isLastMoveFrom =
+          wasComputerMove && lastMove?.from === squareName;
+
+        const isLastMoveTo =
+          wasComputerMove && lastMove?.to === squareName;
+
+
+        const checkedBackground = checkFlash.interpolate({
+          inputRange: [0, 1],
+          outputRange: [
+            isDark ? COLORS.board.darkSquare : COLORS.board.lightSquare,
+            COLORS.board.check,
+          ],
+        });
+
         return (
-          <Pressable
+          <AnimatedPressable
             key={squareName}
             style={[
               styles.square,
@@ -118,19 +184,34 @@ export default function ChessBoard({
                 top: row * (boardSize / 8),
               },
               {
-                backgroundColor:
-                  isCheckmate && squareInCheck === squareName
-                    ? COLORS.board.check
-                    : isDark ? COLORS.board.darkSquare : COLORS.board.lightSquare,
+                backgroundColor: isDark
+                  ? COLORS.board.darkSquare
+                  : COLORS.board.lightSquare,
               },
-              isSelected && { backgroundColor: COLORS.board.selected },
             ]}
             onPress={() => onSquarePress(squareName)}
+            onPressIn={() => onSquarePressIn(squareName)}
           >
             {isLegalMove && <View style={styles.legalMoveDot} />}
-
+            {isLastMoveFrom && (<View style={[styles.fill, { backgroundColor: COLORS.board.lastFromMove, borderWidth: 3, borderColor: "yellow", }]} />)}
+            {isLastMoveTo && (<View style={[styles.fill, { backgroundColor: COLORS.board.lastToMove, borderWidth: 3, borderColor: "yellow", }]} />)}
+            {isCheckedSquare && (<Animated.View
+              style={[
+                styles.fill,
+                {
+                  backgroundColor: checkedBackground,
+                },
+              ]}
+            />
+            )}
+            {isIllegalSquare && (
+              <View style={[styles.fill, { backgroundColor: COLORS.board.check }]} />
+            )}
+            {isSelected && (
+              <View style={[styles.fill, { backgroundColor: COLORS.board.selected, borderWidth: 3, borderColor: COLORS.board.selectedBorder, }]} />
+            )}
             <Text style={styles.squareLabel}>{squareName}</Text>
-          </Pressable>
+          </AnimatedPressable>
         );
       })}
 
@@ -163,7 +244,10 @@ const styles = StyleSheet.create({
     borderColor: COLORS.board.border,
     backgroundColor: COLORS.background,
   },
-
+  fill: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 1,
+  },
   square: {
     position: "absolute",
     justifyContent: "center",
@@ -175,7 +259,8 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: COLORS.board.legalMove,
+    backgroundColor: COLORS.board.selected,
+    zIndex: 2,
   },
 
   squareLabel: {
@@ -186,5 +271,6 @@ const styles = StyleSheet.create({
     color: "#D9B46B",
     fontWeight: "700",
     opacity: 0.9,
+    zIndex: 3
   },
 });

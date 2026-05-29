@@ -25,6 +25,8 @@ export type ChessBoardProps = {
     getPieceAtSquare: (square: Square) => any;
     onSquarePress: (square: Square) => void;
     lastMove: LastMove;
+    illegalSquare: Square | null;
+    onSquarePressIn: (square: Square) => void;
 };
 
 export type SavedAppState = {

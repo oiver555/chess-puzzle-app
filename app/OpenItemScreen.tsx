@@ -30,6 +30,7 @@ import BP from "../assets/pieces/svg/bP.svg";
 import MasteryCircle from "@/components/MasteryCircle";
 import AdBanner from "@/components/AdBanner";
 import { Opening } from "@/data/openings";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width } = Dimensions.get("window");
 type ChessPieceComponent = React.ComponentType<any>;
@@ -47,6 +48,29 @@ export default function OpeningDetailScreen() {
     const openingData = JSON.parse(opening as string) as Opening;
     const [moveIndex, setMoveIndex] = React.useState(0);
     const [activeTab, setActiveTab] = React.useState("OVERVIEW");
+    const progressKey = `opening-progress-${openingData.eco}-${openingData.name}`;
+
+React.useEffect(() => {
+  async function loadProgress() {
+    const saved = await AsyncStorage.getItem(progressKey);
+
+    if (saved) {
+      setProgress(JSON.parse(saved));
+    } else {
+      setProgress({
+        attempts: 0,
+        correctAttempts: 0,
+        currentStreak: 0,
+        bestStreak: 0,
+        mastery: 0,
+        mastered: false,
+        lastPracticedAt: "",
+      });
+    }
+  }
+
+  loadProgress();
+}, [progressKey]);
 
     const pieceMap: Record<string, React.ComponentType<any>> = {
         p: BP,

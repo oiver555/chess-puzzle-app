@@ -2,7 +2,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Chess, Square } from "chess.js";
-import ChessBoard, { LastMove } from "../components/Chessboard";
+import ChessBoard  from "../components/Chessboard";
 import RewardModal from "@/components/RewardModal";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,6 +10,7 @@ import { COLORS } from "@/theme/colors";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MasteryCircle from "@/components/MasteryCircle";
 import { Opening } from "@/data/openings";
+import { LastMove } from "@/types/match";
 
 export type MoveDetail = {
     order: string;
@@ -22,9 +23,12 @@ export type MoveDetail = {
 
 type OpeningProgress = {
     openingId: string;
+    attempts: number;
+    correctAttempts: number;
     completedRuns: number;
     requiredRuns: number;
-    mastered: boolean;
+    mastery: number;
+    lastPracticedAt: string;
 };
 const REQUIRED_RUNS = 5;
 
@@ -42,6 +46,7 @@ export default function OpeningPractice() {
     const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
     const [legalMoves, setLegalMoves] = useState<Square[]>([]);
     const [completedRuns, setCompletedRuns] = useState(0);
+    const [progress, setProgress] = useState<OpeningProgress | null>(null);
 
     const currentMove = openingData.moves[moveIndex];
 
@@ -272,7 +277,7 @@ export default function OpeningPractice() {
                         <Text style={[styles.progressTitle, { color: openingData.color }]}>
                             MASTERY
                         </Text>
-                        <View style={{paddingVertical: 5}}>
+                        <View style={{ paddingVertical: 5 }}>
                             <MasteryCircle percent={masteryPercent} color={openingData.color} />
                         </View>
                         <Text style={[styles.progressText, { color: openingData.color }]}>
@@ -290,6 +295,8 @@ export default function OpeningPractice() {
                     getPieceAtSquare={(square) => game.get(square)}
                     onSquarePress={handleSquarePress}
                     lastMove={lastMove}
+                    illegalSquare={null}
+                    onSquarePressIn={() => {}}
                 />
 
                 <View style={styles.controls}>

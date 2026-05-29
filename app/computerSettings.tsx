@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
   },
 
   boardPattern: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width,
     height: "100%",
     opacity: 1,

@@ -7,10 +7,12 @@ export const COLORS = {
     lightSquare: "#F4EEDC",
     darkSquare: "#0E4B4B",
     border: "#D9B46B",
-    selected: "#D6A84F",
+    selected: "#3ecc4a70",
+    selectedBorder: "#37d144",
     legalMove: "rgba(214,168,79,0.45)",
-    check: "#C94B4B",
-    coords: "#D9B46B",
+    check: "#dc3737cd", 
+    lastToMove: "rgba(255, 215, 90, 0.48)",
+    lastFromMove: "rgba(172, 136, 39, 0.22)",
   },
 
   text: {

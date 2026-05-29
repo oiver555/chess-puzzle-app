@@ -4,11 +4,7 @@
     "slug": "chess-sandbox",
     "version": "1.0.0",
     "orientation": "portrait",
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+   
     "scheme": "chessmasters",
     "updates": {
       "fallbackToCacheTimeout": 0
@@ -43,7 +39,9 @@
       "expo-asset",
       "expo-font",
       "expo-image",
-      "expo-router"
+      "expo-router",
+      "expo-splash-screen",
+      "expo-status-bar"
     ]
   }
 }
