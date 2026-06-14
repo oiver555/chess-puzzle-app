@@ -14,6 +14,10 @@ import Animated, {
 } from "react-native-reanimated";
 import { Dimensions } from "react-native";
 import { runOnJS } from "react-native-worklets";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { playSound } from "@/util/chessUtils";
+import { useAudioPlayer } from "expo-audio";
+import { SOUNDS } from "@/util/sounds";
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -34,6 +38,7 @@ export const SettingsModal = ({
     const [soundEnabled, setSoundEnabled] = useState(true);
     const overlayOpacity = useSharedValue(0);
     const translateX = useSharedValue(screenWidth);
+    const illegalPlayer = useAudioPlayer(SOUNDS.illegal);
 
     useEffect(() => {
         if (visible) {
@@ -49,6 +54,16 @@ export const SettingsModal = ({
             });
         }
     }, [visible]);
+
+    const handleResetProgress = async () => {
+        console.log("Reset Progress");
+
+        try {
+            await AsyncStorage.clear();
+        } catch (error) {
+            console.log(error);
+        }
+    };
 
     const overlayAnimatedStyle = useAnimatedStyle(() => ({
         opacity: overlayOpacity.value,
@@ -77,37 +92,37 @@ export const SettingsModal = ({
     };
 
     return <Modal visible={visible} transparent animationType="none">
-        <Animated.View style={[
-            styles.overlay,
-            overlayAnimatedStyle,
-        ]}>
+        <Animated.View
+
+            onTouchStart={() => {
+                playSound(illegalPlayer)
+                handleClose()
+            }}
+            style={[
+                styles.overlay,
+                overlayAnimatedStyle,
+            ]}>
             <Animated.View style={[styles.settingsModal, animatedStyle]}>
 
                 <View style={styles.header}>
                     <Text style={styles.title}>Settings</Text>
 
-                    <Pressable onPress={handleClose}>
+                    <Pressable onPressIn={() => playSound(illegalPlayer)} onPress={handleClose}>
                         <Text style={styles.close}>✕</Text>
                     </Pressable>
                 </View>
 
 
-                <SettingRow label="Highlight legal moves">
+                <SettingRow label="Highlight moves">
                     <Switch value={highlightMoves} onValueChange={setHighlightMoves} />
                 </SettingRow>
 
-                <SettingRow label="Show move hints">
+                <SettingRow label="Show Eval">
                     <Switch value={showMoveHints} onValueChange={setShowMoveHints} />
                 </SettingRow>
 
                 <SettingRow label="Sounds">
                     <Switch value={soundEnabled} onValueChange={setSoundEnabled} />
-                </SettingRow>
-
-                <SettingRow label="Reset progress">
-                    <Pressable style={styles.actionButton}>
-                        <Text style={styles.actionText}>Reset</Text>
-                    </Pressable>
                 </SettingRow>
                 <SettingRow label="Remove Ads">
                     <Pressable style={styles.premiumButton}>
@@ -116,6 +131,12 @@ export const SettingsModal = ({
                         </Text>
                     </Pressable>
                 </SettingRow>
+                <SettingRow label="Reset progress">
+                    <Pressable onPress={handleResetProgress} style={styles.actionButton}>
+                        <Text style={styles.actionText}>Reset</Text>
+                    </Pressable>
+                </SettingRow>
+
 
             </Animated.View>
         </Animated.View>

@@ -21,3 +21,7 @@ export function getEcoCategory(eco: string) {
       return "Unknown";
   }
 }
+export const playSound = (player: any) => {
+  player.seekTo(0);
+  player.play();
+};

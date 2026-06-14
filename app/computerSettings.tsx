@@ -8,10 +8,11 @@ import {
   Image,
   Dimensions,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { router, usePathname } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { saveAppState } from "@/util/storage";
+import Header from "@/components/Header";
+import { SettingsModal } from "@/components/SettingsModal";
 
 const { width, height } = Dimensions.get("window");
 
@@ -62,6 +63,7 @@ const difficulties = [
 export default function ComputerSettings() {
   const [side, setSide] = useState<"w" | "r" | "b">("w");
   const [difficulty, setDifficulty] = useState("rookie");
+  const [showSettings, setShowSettings] = React.useState(false);
 
   const pathname = usePathname()
 
@@ -76,17 +78,9 @@ export default function ComputerSettings() {
 
   return (
     <View style={styles.screen}>
-      <LinearGradient colors={[COLORS.dark, COLORS.dark2]} style={styles.header}>
-        <Pressable style={styles.headerButton} onPress={() => router.replace("/")}>
-          <Ionicons name="chevron-back" size={28} color="#fff" />
-        </Pressable>
+      <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
 
-        <Text style={styles.headerTitle}>PLAY VS COMPUTER</Text>
-
-        <Pressable style={styles.headerButton}>
-          <Ionicons name="settings" size={24} color="#fff" />
-        </Pressable>
-      </LinearGradient>
+      <Header onSettings={() => setShowSettings(true)} variant={3} title="PLAY VS COMPUTER" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -167,7 +161,7 @@ export default function ComputerSettings() {
                     adjustsFontSizeToFit
                     style={[styles.diffTitle, active && styles.diffTitleActive]}>
                     {item.title}
-                  </Text> 
+                  </Text>
                 </View>
 
                 <Text style={[styles.elo, active && styles.eloActive]}>
@@ -265,36 +259,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: COLORS.cream,
-  },
-
-  header: {
-    paddingTop: isSmallPhone ? 34 : 46,
-    paddingBottom: 14,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    borderBottomColor: COLORS.gold,
-    borderBottomWidth: 3,
-  },
-
-  headerButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  headerTitle: {
-    flex: 1,
-    color: "#fff",
-    textAlign: "center",
-    fontSize: isNarrowPhone ? 24 : 30,
-    fontWeight: "900",
-    letterSpacing: 1,
   },
 
   content: {

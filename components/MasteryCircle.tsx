@@ -5,12 +5,16 @@ import Svg, { Circle } from "react-native-svg";
 export default function MasteryCircle({
     percent,
     color,
+    fontSize = 22,
+    size = 96,
+    strokeWidth = 10,
 }: {
     percent: number;
     color: string;
+    size?: number;
+    fontSize?: number;
+    strokeWidth?: number;
 }) {
-    const size = 96;
-    const strokeWidth = 10;
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
     const progress = circumference * (1 - percent / 100);
@@ -44,7 +48,7 @@ export default function MasteryCircle({
             </Svg>
 
             <View style={styles.masteryCenter}>
-                <Text style={styles.progressPercent}>{percent}%</Text>
+                <Text style={[styles.progressPercent, { fontSize, }]}>{percent}%</Text>
             </View>
         </View>
     );
@@ -58,13 +62,12 @@ const styles = StyleSheet.create({
     },
 
     masteryCenter: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         alignItems: "center",
         justifyContent: "center",
     },
     progressPercent: {
         color: COLORS.text.primary,
-        fontSize: 22,
         fontWeight: "900",
     },
 }) 

@@ -1,16 +1,18 @@
-import { useLocalSearchParams, router } from "expo-router";
+import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Chess, Square } from "chess.js";
-import ChessBoard  from "../components/Chessboard";
+import ChessBoard from "../components/Chessboard";
 import RewardModal from "@/components/RewardModal";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/theme/colors";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MasteryCircle from "@/components/MasteryCircle";
-import { Opening } from "@/data/openings";
+import { Opening, OpeningProgress } from "@/data/openings";
 import { LastMove } from "@/types/match";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { STORAGE_KEYS } from "@/constants/storage";
 
 export type MoveDetail = {
     order: string;
@@ -21,19 +23,10 @@ export type MoveDetail = {
     commentary?: string;
 };
 
-type OpeningProgress = {
-    openingId: string;
-    attempts: number;
-    correctAttempts: number;
-    completedRuns: number;
-    requiredRuns: number;
-    mastery: number;
-    lastPracticedAt: string;
-};
 const REQUIRED_RUNS = 5;
 
 export default function OpeningPractice() {
-    const { opening } = useLocalSearchParams();
+    const { opening, masteryPercent: initialMasteryPercent } = useLocalSearchParams();
     const openingData = JSON.parse(opening as string) as Opening;
     const playerColor = openingData.side === "black" ? "b" : "w";
     const [showReward, setShowReward] = useState(false);
@@ -45,24 +38,20 @@ export default function OpeningPractice() {
     const [lastMove, setLastMove] = useState<LastMove>(null);
     const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
     const [legalMoves, setLegalMoves] = useState<Square[]>([]);
-    const [completedRuns, setCompletedRuns] = useState(0);
-    const [progress, setProgress] = useState<OpeningProgress | null>(null);
+    const [completedReps, setCompletedReps] = useState(0);
+    const [masteryPercent, setMasteryPercent] = useState(Number(initialMasteryPercent ?? 0));
 
     const currentMove = openingData.moves[moveIndex];
 
     function completeOpeningPractice(progress: OpeningProgress) {
-        const completedRuns = Math.min(progress.completedRuns + 1, REQUIRED_RUNS);
+        const completedReps = Math.min(progress.completedReps + 1, REQUIRED_RUNS);
 
         return {
             ...progress,
-            completedRuns,
-            mastered: completedRuns >= REQUIRED_RUNS,
+            completedReps,
+            mastered: completedReps >= REQUIRED_RUNS,
         };
     }
-    const masteryPercent = Math.round(
-        (completedRuns / REQUIRED_RUNS) * 100
-    );
-
     const handleSquarePress = (squareName: Square) => {
         const piece = game.get(squareName);
 
@@ -147,7 +136,8 @@ export default function OpeningPractice() {
 
         } else {
             setMoveIndex(nextIndex);
-            setCompletedRuns((prev) => {
+            saveOpeningProgress();
+            setCompletedReps((prev) => {
                 const next = Math.min(prev + 1, REQUIRED_RUNS);
 
                 if (next >= REQUIRED_RUNS) {
@@ -209,6 +199,46 @@ export default function OpeningPractice() {
         return `${pieceMap[firstChar]} to ${square}`;
     };
 
+    async function saveOpeningProgress() {
+        const openingId = openingData.name;
+
+        const saved = await AsyncStorage.getItem(
+            STORAGE_KEYS.OPENING_PROGRESS
+        );
+
+        const allProgress: Record<string, OpeningProgress> = saved
+            ? JSON.parse(saved)
+            : {};
+
+        const previous = allProgress[openingId] ?? {
+            openingId,
+            mastery: 0,
+            completedReps: 0,
+            correctMoves: 0,
+            totalAttempts: 0,
+            lastPracticedAt: undefined,
+        };
+
+        const nextMastery = Math.min(previous.mastery + 20, 100);
+
+        allProgress[openingId] = {
+            ...previous,
+            mastery: nextMastery,
+            completedReps: previous.completedReps + 1,
+            correctMoves: previous.correctMoves + openingData.moves.length,
+            totalAttempts: previous.totalAttempts + openingData.moves.length,
+            lastPracticedAt: new Date().toISOString(),
+        };
+
+        await AsyncStorage.setItem(
+            STORAGE_KEYS.OPENING_PROGRESS,
+            JSON.stringify(allProgress)
+        );
+
+        setMasteryPercent(nextMastery);
+    }
+    console.log(masteryPercent);
+
     useEffect(() => {
         if (openingData.side === "black") {
             const initialGame = new Chess();
@@ -223,7 +253,9 @@ export default function OpeningPractice() {
 
             setMessage(`Practice the ${openingData.name} as Black`);
         }
+
     }, []);
+
 
     return (
         <LinearGradient style={{ flex: 1 }} colors={[COLORS.header.dark, COLORS.header.dark2]} >
@@ -296,7 +328,7 @@ export default function OpeningPractice() {
                     onSquarePress={handleSquarePress}
                     lastMove={lastMove}
                     illegalSquare={null}
-                    onSquarePressIn={() => {}}
+                    onSquarePressIn={() => { }}
                 />
 
                 <View style={styles.controls}>

@@ -13,36 +13,32 @@ import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from "@expo/vector-ico
 import { router } from "expo-router";
 import * as NavigationBar from "expo-navigation-bar";
 import { useEffect } from "react";
-import { loadAppState } from "@/util/storage";
+import { getLearnedOpeningsCount, loadAppState } from "@/util/storage";
 import { SettingsModal } from "@/components/SettingsModal";
 import { openings } from "@/data/openings";
-
-const { width, height } = Dimensions.get("window");
-
-const isSmallPhone = height < 700;
-const isNarrowPhone = width < 380;
-const scale = (size: number) => {
-    const baseWidth = 390;
-    return Math.round((width / baseWidth) * size);
-};
-
-const COLORS = {
-    dark: "#062E26",
-    dark2: "#031D19",
-    cream: "#F8F2E6",
-    card: "#FFFDF8",
-    gold: "#D5A94A",
-    text: "#07352D",
-    muted: "#385A52",
-};
+import { playSound } from "@/util/chessUtils";
+import { useAudioPlayer } from "expo-audio";
+import { SOUNDS } from "@/util/sounds";
+import { MenuCard } from "@/components/MenuCard";
+import { deviceWidth, isNarrowPhone, isSmallPhone } from "@/constants/globals";
+import { COLORS } from "@/theme/colors";
+import Header from "@/components/Header";
+ 
 
 export default function App() {
 
     const [showSettings, setShowSettings] = React.useState(false);
-
+    const [learnedOpenings, setLearnedOpenings] = React.useState(0);
+   
     useEffect(() => {
         NavigationBar.setVisibilityAsync("hidden");
 
+        async function load() {
+            const count = await getLearnedOpeningsCount();
+            setLearnedOpenings(count);
+        }
+
+        load();
         return () => {
             NavigationBar.setVisibilityAsync("visible");
         };
@@ -63,46 +59,8 @@ export default function App() {
     return (
         <View style={styles.screen}>
             <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
-            <LinearGradient colors={[COLORS.dark, COLORS.dark2]} style={styles.header}>
-                <View style={styles.profileRow}>
-                    <Image
-                        source={require("../assets/images/profile/avatar.png")}
-                        style={styles.avatar}
-                    />
 
-                    <View style={styles.profileInfo}>
-                        <Text numberOfLines={3} adjustsFontSizeToFit style={styles.name}>CHESSMASTER</Text>
-
-                        {/* <View style={styles.rankRow}>
-                            <Ionicons name="book" size={18} color={COLORS.gold} />
-                            <Text style={styles.rank}>OPENING SCHOLAR</Text>
-                        </View> */}
-
-
-                        <View style={styles.progressContainer}>
-                            <View style={styles.progressTrack}>
-                                <View style={[styles.progressFill, { width: "0%" }]} />
-
-                                <View style={styles.progressContent}>
-                                    <Text style={styles.progressLabel}>
-                                        OPENINGS LEARNED
-                                    </Text>
-
-                                    <Text style={styles.progressText}>
-                                        0 / {openings.length}
-                                    </Text>
-                                </View>
-                            </View>
-                        </View>
-                    </View>
-
-
-
-                    <Pressable style={styles.headerIcon} onPress={() => setShowSettings(true)}>
-                        <Ionicons name="settings" size={25} color="#EDE7DA" />
-                    </Pressable>
-                </View>
-            </LinearGradient>
+            <Header title="CHESSMASTER" subtitle="OPENING SCHOLAR" variant={1} onSettings={() => setShowSettings(true)} learnedOpenings={learnedOpenings} />
 
             <ScrollView
                 style={styles.content}
@@ -119,7 +77,7 @@ export default function App() {
                     <View style={styles.titleBlock}>
                         <Text style={styles.title}>CHOOSE{"\n"}YOUR MODE</Text>
                         <View style={styles.goldLineRow}>
-                            <MaterialCommunityIcons name="chess-king" size={22} color={COLORS.gold} />
+                            <MaterialCommunityIcons name="chess-king" size={22} color={COLORS.homepage.gold} />
                             <View style={styles.goldLine} />
                         </View>
                     </View>
@@ -164,67 +122,17 @@ export default function App() {
         </View>
     );
 }
-function MenuCard({
-    icon,
-    title,
-    gold = false,
-    onPress,
-}: {
-    icon: React.ReactNode;
-    title: string;
-    gold?: boolean;
-    onPress?: () => void;
-}) {
-    return (
-        <Pressable onPress={onPress} style={styles.card}>
-            <View style={[styles.cardIcon, gold && styles.cardIconGold]}>{icon}</View>
-
-            <View style={styles.cardText}>
-                <Text style={styles.cardTitle}>{title}</Text>
-            </View>
-
-            <Ionicons name="chevron-forward" size={32} color={COLORS.text} />
-        </Pressable>
-    );
-}
-
-
-function NavItem({
-    icon,
-    label,
-    active = false,
-    material = false,
-}: {
-    icon: any;
-    label: string;
-    active?: boolean;
-    material?: boolean;
-}) {
-    const color = active ? COLORS.gold : "#C9C9C9";
-
-    return (
-        <Pressable style={styles.navItem}>
-            {material ? (
-                <MaterialCommunityIcons name={icon} size={30} color={color} />
-            ) : (
-                <Ionicons name={icon} size={30} color={color} />
-            )}
-            <Text style={[styles.navLabel, active && styles.navLabelActive]}>{label}</Text>
-        </Pressable>
-    );
-}
-
+ 
 const styles = StyleSheet.create({
     screen: {
         flex: 1,
-        backgroundColor: COLORS.cream,
+        backgroundColor: COLORS.homepage.cream,
     },
     header: {
         paddingTop: isSmallPhone ? 30 : 40,
         paddingHorizontal: 22,
-        paddingBottom: isSmallPhone ? 14 : 20,
-
-        borderBottomColor: COLORS.gold,
+        paddingBottom: isSmallPhone ? 14 : 20, 
+        borderBottomColor: COLORS.homepage.gold,
         borderBottomWidth: 3,
     },
 
@@ -233,7 +141,7 @@ const styles = StyleSheet.create({
         height: isSmallPhone ? 56 : 64,
         borderRadius: 32,
         borderWidth: 3,
-        borderColor: COLORS.gold,
+        borderColor: COLORS.homepage.gold,
     },
 
     name: {
@@ -243,7 +151,7 @@ const styles = StyleSheet.create({
     },
 
     rank: {
-        color: COLORS.gold,
+        color: COLORS.homepage.gold,
         fontSize: isNarrowPhone ? 13 : 15,
         fontWeight: "800",
     },
@@ -267,12 +175,12 @@ const styles = StyleSheet.create({
         fontSize: isNarrowPhone ? 28 : 34,
         lineHeight: isNarrowPhone ? 34 : 40,
         fontWeight: "900",
-        color: COLORS.text,
+        color: COLORS.homepage.text,
         letterSpacing: 1,
     },
 
     heroImageWrap: {
-        width: width * 0.48,
+        width: deviceWidth * 0.48,
         height: isSmallPhone ? 250 : 320,
         alignItems: "center",
         justifyContent: "center",
@@ -287,7 +195,7 @@ const styles = StyleSheet.create({
     card: {
         minHeight: isSmallPhone ? 84 : 104,
         borderRadius: 26,
-        backgroundColor: COLORS.card,
+        backgroundColor: COLORS.homepage.card,
         flexDirection: "row",
         alignItems: "center",
         paddingHorizontal: 18,
@@ -316,13 +224,13 @@ const styles = StyleSheet.create({
         width: isSmallPhone ? 56 : 68,
         height: isSmallPhone ? 56 : 68,
         borderRadius: 18,
-        backgroundColor: COLORS.dark,
+        backgroundColor: COLORS.homepage.dark,
         alignItems: "center",
         justifyContent: "center",
     },
 
     cardTitle: {
-        color: COLORS.text,
+        color: COLORS.homepage.text,
         fontSize: isNarrowPhone ? 18 : 22,
         fontWeight: "900",
     },
@@ -366,8 +274,8 @@ const styles = StyleSheet.create({
         left: 0,
         top: 0,
         bottom: 0,
-        backgroundColor: COLORS.gold,
-        borderRadius: 14,
+        backgroundColor: COLORS.homepage.gold,
+        borderRadius: 15,
     },
 
     progressContent: {
@@ -388,6 +296,7 @@ const styles = StyleSheet.create({
         color: "#d0d0d0",
         fontSize: 11,
         fontWeight: "900",
+        zIndex: 1,
     },
     headerIcon: {
         width: 48,
@@ -434,7 +343,7 @@ const styles = StyleSheet.create({
     goldLine: {
         height: 2,
         width: 90,
-        backgroundColor: COLORS.gold,
+        backgroundColor: COLORS.homepage.gold,
         marginLeft: 10,
     },
 
@@ -460,7 +369,7 @@ const styles = StyleSheet.create({
 
 
     cardIconGold: {
-        backgroundColor: COLORS.gold,
+        backgroundColor: COLORS.homepage.gold,
     },
 
     cardText: {
@@ -471,7 +380,7 @@ const styles = StyleSheet.create({
 
 
     cardSubtitle: {
-        color: COLORS.muted,
+        color: COLORS.homepage.muted,
         fontSize: 16,
         marginTop: 5,
     },
@@ -483,7 +392,7 @@ const styles = StyleSheet.create({
         bottom: 18,
         height: 92,
         borderRadius: 28,
-        backgroundColor: COLORS.dark2,
+        backgroundColor: COLORS.homepage.dark2,
         flexDirection: "row",
         justifyContent: "space-around",
         alignItems: "center",
@@ -507,6 +416,6 @@ const styles = StyleSheet.create({
     },
 
     navLabelActive: {
-        color: COLORS.gold,
+        color: COLORS.homepage.gold,
     },
 });

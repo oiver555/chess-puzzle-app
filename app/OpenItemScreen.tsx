@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Chess } from "chess.js";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "@/theme/colors";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,8 +29,10 @@ import BN from "../assets/pieces/svg/bN.svg";
 import BP from "../assets/pieces/svg/bP.svg";
 import MasteryCircle from "@/components/MasteryCircle";
 import AdBanner from "@/components/AdBanner";
-import { Opening } from "@/data/openings";
+import { Opening, OpeningProgress } from "@/data/openings";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { STORAGE_KEYS } from "@/constants/storage";
+import { getOpeningProgress } from "@/util/storage";
 
 const { width } = Dimensions.get("window");
 type ChessPieceComponent = React.ComponentType<any>;
@@ -47,31 +49,34 @@ export default function OpeningDetailScreen() {
     const { opening } = useLocalSearchParams();
     const openingData = JSON.parse(opening as string) as Opening;
     const [moveIndex, setMoveIndex] = React.useState(0);
-    const [activeTab, setActiveTab] = React.useState("OVERVIEW");
-    const progressKey = `opening-progress-${openingData.eco}-${openingData.name}`;
-
-React.useEffect(() => {
-  async function loadProgress() {
-    const saved = await AsyncStorage.getItem(progressKey);
-
-    if (saved) {
-      setProgress(JSON.parse(saved));
-    } else {
-      setProgress({
-        attempts: 0,
-        correctAttempts: 0,
-        currentStreak: 0,
-        bestStreak: 0,
+    const defaultProgress: OpeningProgress = {
+        openingId: openingData.name,
         mastery: 0,
-        mastered: false,
-        lastPracticedAt: "",
-      });
-    }
-  }
+        completedReps: 0,
+        correctMoves: 0,
+        totalAttempts: 0,
+        lastPracticedAt: undefined,
+    };
 
-  loadProgress();
-}, [progressKey]);
+    const [masteryPercent, setMasteryPercent] =
+        React.useState<number>(defaultProgress.mastery);
 
+    useFocusEffect(() => {
+        async function load() {
+            const progress = await getOpeningProgress(
+                openingData.name
+            );
+
+            if (!progress) return;
+
+            setMasteryPercent(progress.mastery);
+            // setCompletedReps(progress.completedReps);
+        }
+
+        load();
+
+    } );
+ 
     const pieceMap: Record<string, React.ComponentType<any>> = {
         p: BP,
         r: BR,
@@ -133,6 +138,8 @@ React.useEffect(() => {
 
 
     const openingPositions = generateOpeningPositions(openingData.moves);
+
+
 
     return (
         <SafeAreaView style={styles.screen}>
@@ -241,7 +248,7 @@ React.useEffect(() => {
                     <View style={styles.learnRow}>
                         <View style={styles.progressBox}>
                             <Text style={[styles.progressTitle, { color: openingData.color, }]}>MASTERY</Text>
-                            <MasteryCircle percent={72} color={openingData.color} />
+                            <MasteryCircle percent={masteryPercent} color={openingData.color} />
                             <Text style={[styles.progressText, { color: openingData.color, }]}>Keep practicing!</Text>
                         </View>
                     </View>
@@ -256,6 +263,7 @@ React.useEffect(() => {
                             pathname: "/OpeningPractice",
                             params: {
                                 opening: JSON.stringify(openingData),
+                                masteryPercent,
                             },
                         });
                     }}
@@ -795,7 +803,7 @@ const styles = StyleSheet.create({
         gap: 10
     },
 
-    progressTitle: { 
+    progressTitle: {
         fontWeight: "900",
         fontSize: 13,
     },

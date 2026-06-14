@@ -25,9 +25,8 @@ import {
 import { SOUNDS } from "../util/sounds";
 import RewardModal from "@/components/RewardModal";
 import WinModal from "@/components/YouWonModal";
-
-
-const TEST_FEN = "8/P7/8/8/8/8/8/4k2K w - - 0 1";
+import { playSound } from "@/util/chessUtils";
+import Header from "@/components/Header";
 
 const Match = () => {
     const { side, difficulty } = useLocalSearchParams<{ side?: "w" | "b" | "r"; difficulty?: string; }>();
@@ -56,8 +55,7 @@ const Match = () => {
         to: Square;
     } | null>(null);
     const [showWinModal, setShowWinModal] = React.useState(true);
-
-
+  const [showSettings, setShowSettings] = React.useState(false);
 
     const handlePromotion = (promotion: "q" | "r" | "b" | "n") => {
         if (!promotionMove) return;
@@ -170,14 +168,7 @@ const Match = () => {
         setIsCheckmate(false);
         setSquareInCheck("");
         setRefresh((prev) => prev + 1);
-    };
-
-    const playSound = (player: any) => {
-        player.seekTo(0);
-        setTimeout(() => {
-            player.play();
-        }, 100);
-    };
+    }; 
 
     const playMoveResultSound = (move: any, status: string) => {
         if (status === "checkmate") {
@@ -577,10 +568,12 @@ const Match = () => {
                 }}
             />
             <PromotionModal visible={promotionMove !== null} playerColor={playerColorRef.current} onPromote={handlePromotion} />
-            <LinearGradient colors={[COLORS.header.dark, COLORS.header.dark2]} style={styles.header}>
+            {/* <LinearGradient colors={[COLORS.header.dark, COLORS.header.dark2]} style={styles.header}>
                 <Text style={styles.level}>LEVEL</Text>
                 <Text style={styles.rank}>{difficulty}</Text>
-            </LinearGradient>
+            </LinearGradient> */}
+
+            <Header title="LEVEL" subtitle={difficulty} variant={2} onSettings={() => setShowSettings(true)}  />
 
             <View style={styles.backRow}>
                 <Pressable
@@ -852,20 +845,7 @@ const styles = StyleSheet.create({
         borderBottomColor: COLORS.board.border,
         backgroundColor: COLORS.background,
     },
-    level: {
-        color: COLORS.text.muted,
-        fontSize: 18,
-        fontWeight: "900",
-        letterSpacing: 1,
-        marginBottom: 10,
-    },
-    rank: {
-        color: COLORS.text.primary,
-        fontSize: 34,
-        fontWeight: "900",
-        marginTop: 6,
-        letterSpacing: 1,
-    },
+   
     backRow: {
         position: "absolute",
         top: 55,

@@ -22,23 +22,233 @@ export type Opening = {
 };
 
 export function calculateMastery(progress?: OpeningProgress) {
-  if (!progress || progress.totalAttempts === 0) return 0;
+    if (!progress || progress.totalAttempts === 0) return 0;
 
-  const accuracy = progress.correctMoves / progress.totalAttempts;
-  const repScore = Math.min(progress.completedReps / 10, 1);
+    const accuracy = progress.correctMoves / progress.totalAttempts;
+    const repScore = Math.min(progress.completedReps / 10, 1);
 
-  return Math.round((accuracy * 0.7 + repScore * 0.3) * 100);
+    return Math.round((accuracy * 0.7 + repScore * 0.3) * 100);
 }
 
 export type OpeningProgress = {
-  openingEco: string;
-  completedReps: number;
-  correctMoves: number;
-  totalAttempts: number;
-  lastPracticedAt?: string;
+    openingId: string;
+    mastery: number; 
+    completedReps: number;
+    correctMoves: number;
+    totalAttempts: number; 
+    lastPracticedAt?: string;
 };
 
 export const openings: Opening[] = [
+    {
+        eco: "A00",
+        category: getEcoCategory("A00"),
+        tags: [],
+        name: "Polish Opening",
+        type: "opening",
+        commentary:
+            "An unusual flank opening that immediately expands on the queenside.",
+        description:
+            "The Polish Opening creates uncommon positions and surprise attacking ideas.",
+        mastery: 2,
+        icon: "chess-pawn",
+        color: "#FFD54F",
+        difficulty: "Intermediate",
+        side: "white",
+
+        moves: ["b4"],
+
+        uci: [
+            "b2b4",
+        ],
+
+        moveDetails: [
+            {
+                order: "1.",
+                move: "b4",
+                side: "white",
+                piece: "♙",
+                text: "White immediately expands on the queenside and prepares bishop development.",
+            },
+        ],
+    },
+    {
+        eco: "D70",
+        category: getEcoCategory("D70"),
+        tags: ["Indian Defense", "Hypermodern", "Counterattacking"],
+        name: "Grünfeld Defense",
+        type: "opening",
+        commentary:
+            "A dynamic hypermodern defense where Black allows White to build a strong center before attacking it with piece pressure.",
+        description:
+            "The Grünfeld Defense arises after 1.d4 Nf6 2.c4 g6 3.Nc3 d5. Black challenges White's center rather than occupying it directly, aiming for active piece play and counterattacking chances. It has been a favorite of many world champions and aggressive positional players.",
+        mastery: 0,
+        icon: "chess-knight",
+        color: "#81C784",
+        difficulty: "Advanced",
+        side: "black",
+
+        moves: [
+            "d4",
+            "Nf6",
+            "c4",
+            "g6",
+            "Nc3",
+            "d5",
+        ],
+
+        uci: [
+            "d2d4",
+            "g8f6",
+            "c2c4",
+            "g7g6",
+            "b1c3",
+            "d7d5",
+        ],
+
+        moveDetails: [
+            {
+                order: "1.",
+                move: "d4",
+                side: "white",
+                piece: "♙",
+                text: "White claims central space and prepares to build a strong pawn center.",
+            },
+            {
+                order: "1...",
+                move: "Nf6",
+                side: "black",
+                piece: "♞",
+                text: "Black develops a knight and begins a flexible Indian Defense setup.",
+            },
+            {
+                order: "2.",
+                move: "c4",
+                side: "white",
+                piece: "♙",
+                text: "White strengthens central control and prepares queenside development.",
+            },
+            {
+                order: "2...",
+                move: "g6",
+                side: "black",
+                piece: "♟",
+                text: "Black prepares to fianchetto the bishop and pressure the center.",
+            },
+            {
+                order: "3.",
+                move: "Nc3",
+                side: "white",
+                piece: "♘",
+                text: "White reinforces the center and supports a future e4 advance.",
+            },
+            {
+                order: "3...",
+                move: "d5",
+                side: "black",
+                piece: "♟",
+                text: "Black immediately challenges White's center, defining the Grünfeld Defense.",
+            },
+        ],
+    },
+    {
+        eco: "A01",
+        category: getEcoCategory("A01"),
+        tags: ["Flank Opening", "Hypermodern"],
+        name: "Nimzowitsch-Larsen Attack",
+        type: "opening",
+        commentary:
+            "A flexible flank opening that develops the bishop to b2 and controls the center from a distance.",
+        description:
+            "The Nimzowitsch-Larsen Attack begins with 1.b3, preparing to fianchetto the queen's bishop. White avoids immediate central occupation and instead applies long-range pressure on the center.",
+        mastery: 0,
+        icon: "chess-bishop",
+        color: "#FFD54F",
+        difficulty: "Intermediate",
+        side: "white",
+
+        moves: ["b3"],
+
+        uci: [
+            "b2b3",
+        ],
+
+        moveDetails: [
+            {
+                order: "1.",
+                move: "b3",
+                side: "white",
+                piece: "♙",
+                text: "White prepares to develop the bishop to b2, where it can exert long-range influence on the center and kingside.",
+            },
+        ],
+    },
+    {
+        eco: "A02",
+        category: getEcoCategory("A02"),
+        tags: [],
+        name: "Bird Opening",
+        type: "opening",
+        commentary:
+            "An aggressive flank opening focused on kingside initiative.",
+        description:
+            "The Bird Opening creates flexible attacking opportunities and unusual structures.",
+        mastery: 5,
+        icon: "chess-pawn",
+        color: "#26C6DA",
+        difficulty: "Intermediate",
+        side: "white",
+
+        moves: ["f4"],
+
+        uci: [
+            "f2f4",
+        ],
+
+        moveDetails: [
+            {
+                order: "1.",
+                move: "f4",
+                side: "white",
+                piece: "♙",
+                text: "White fights for e5 control and kingside attacking chances.",
+            },
+        ],
+    },
+
+    {
+        eco: "A04",
+        category: getEcoCategory("A04"),
+        tags: [],
+        name: "Reti Opening",
+        type: "opening",
+        commentary:
+            "A flexible opening emphasizing piece activity over immediate pawn occupation.",
+        description:
+            "The Reti Opening allows transpositions into many strategic systems.",
+        mastery: 9,
+        icon: "chess-knight",
+        color: "#4DB6AC",
+        difficulty: "Intermediate",
+        side: "white",
+
+        moves: ["Nf3"],
+
+        uci: [
+            "g1f3",
+        ],
+
+        moveDetails: [
+            {
+                order: "1.",
+                move: "Nf3",
+                side: "white",
+                piece: "♘",
+                text: "White develops flexibly while controlling key central squares.",
+            },
+        ],
+    },
+
     {
         eco: "D02",
         category: getEcoCategory("D02"),
@@ -399,7 +609,7 @@ export const openings: Opening[] = [
             "The French Defense prepares a strong central pawn chain and counterattacking play.",
 
         mastery: 18,
-        icon: "shield",
+        icon: "chess-bishop",
         color: "#5C6BC0",
         difficulty: "Intermediate",
         side: "black",
@@ -500,7 +710,7 @@ export const openings: Opening[] = [
         description:
             "The Najdorf creates dynamic counterplay and rich tactical positions.",
         mastery: 9,
-        icon: "fire",
+        icon: "chess-pawn",
         color: "#FF7043",
         difficulty: "Advanced",
         side: "black",
@@ -604,7 +814,7 @@ export const openings: Opening[] = [
         description:
             "The Modern Defense delays central occupation and prepares a kingside fianchetto.",
         mastery: 6,
-        icon: "target",
+        icon: "chess-bishop",
         color: "#78909C",
         difficulty: "Intermediate",
         side: "black",
@@ -633,54 +843,7 @@ export const openings: Opening[] = [
             },
         ],
     },
-    {
-        eco: "C40",
-        category: getEcoCategory("C40"),
-        tags: [],
-        name: "King's Knight Opening",
-        type: "opening",
-        commentary:
-            "A classical opening focused on rapid development and center control.",
-        description:
-            "The King's Knight Opening develops naturally and prepares kingside safety.",
-        mastery: 14,
-        icon: "chess-knight",
-        color: "#7986CB",
-        difficulty: "Beginner",
-        side: "white",
 
-        moves: ["e4", "e5", "Nf3"],
-
-        uci: [
-            "e2e4",
-            "e7e5",
-            "g1f3",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "e4",
-                side: "white",
-                piece: "♙",
-                text: "White immediately controls the center.",
-            },
-            {
-                order: "1...",
-                move: "e5",
-                side: "black",
-                piece: "♟",
-                text: "Black contests central control directly.",
-            },
-            {
-                order: "2.",
-                move: "Nf3",
-                side: "white",
-                piece: "♘",
-                text: "White develops naturally and attacks the e5 pawn.",
-            },
-        ],
-    },
     {
         eco: "B07",
         category: getEcoCategory("B07"),
@@ -692,7 +855,7 @@ export const openings: Opening[] = [
         description:
             "The Pirc Defense creates dynamic and tactical middlegame positions.",
         mastery: 7,
-        icon: "shield",
+        icon: "chess-knight",
         color: "#9575CD",
         difficulty: "Intermediate",
         side: "black",
@@ -804,7 +967,7 @@ export const openings: Opening[] = [
         description:
             "The Slav Defense supports the center while keeping the bishop active.",
         mastery: 10,
-        icon: "castle",
+        icon: "chess-pawn",
         color: "#64B5F6",
         difficulty: "Intermediate",
         side: "black",
@@ -860,7 +1023,7 @@ export const openings: Opening[] = [
         description:
             "The Dutch Defense fights for the e4 square and creates asymmetrical positions.",
         mastery: 8,
-        icon: "fire",
+        icon: "chess-pawn",
         color: "#EF5350",
         difficulty: "Intermediate",
         side: "black",
@@ -900,7 +1063,7 @@ export const openings: Opening[] = [
         description:
             "The King's Gambit creates open tactical battles and rapid development.",
         mastery: 11,
-        icon: "sword",
+        icon: "chess-pawn",
         color: "#EC407A",
         difficulty: "Advanced",
         side: "white",
@@ -937,70 +1100,8 @@ export const openings: Opening[] = [
             },
         ],
     },
-    {
-        eco: "A04",
-        category: getEcoCategory("A04"),
-        tags: [],
-        name: "Reti Opening",
-        type: "opening",
-        commentary:
-            "A flexible opening emphasizing piece activity over immediate pawn occupation.",
-        description:
-            "The Reti Opening allows transpositions into many strategic systems.",
-        mastery: 9,
-        icon: "chess-knight",
-        color: "#4DB6AC",
-        difficulty: "Intermediate",
-        side: "white",
 
-        moves: ["Nf3"],
 
-        uci: [
-            "g1f3",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "Nf3",
-                side: "white",
-                piece: "♘",
-                text: "White develops flexibly while controlling key central squares.",
-            },
-        ],
-    },
-    {
-        eco: "A00",
-        category: getEcoCategory("A00"),
-        tags: [],
-        name: "Polish Opening",
-        type: "opening",
-        commentary:
-            "An unusual flank opening that immediately expands on the queenside.",
-        description:
-            "The Polish Opening creates uncommon positions and surprise attacking ideas.",
-        mastery: 2,
-        icon: "flag",
-        color: "#FFD54F",
-        difficulty: "Intermediate",
-        side: "white",
-
-        moves: ["b4"],
-
-        uci: [
-            "b2b4",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "b4",
-                side: "white",
-                piece: "♙",
-                text: "White immediately expands on the queenside and prepares bishop development.",
-            },
-        ],
-    },
     {
         eco: "C55",
         category: getEcoCategory("C55"),
@@ -1012,7 +1113,7 @@ export const openings: Opening[] = [
         description:
             "The Two Knights Defense develops rapidly and creates tactical opportunities.",
         mastery: 9,
-        icon: "bolt",
+        icon: "chess-knight",
         color: "#FF8A65",
         difficulty: "Intermediate",
         side: "black",
@@ -1132,7 +1233,7 @@ export const openings: Opening[] = [
         description:
             "The Philidor Defense focuses on stability and careful development.",
         mastery: 5,
-        icon: "shield",
+        icon: "chess-pawn",
         color: "#90A4AE",
         difficulty: "Beginner",
         side: "black",
@@ -1177,46 +1278,7 @@ export const openings: Opening[] = [
             },
         ],
     },
-    {
-        eco: "A45",
-        category: getEcoCategory("A45"),
-        tags: [],
-        name: "Queen's Pawn Game",
-        type: "opening",
-        commentary:
-            "A flexible d4 opening that can transpose into many systems.",
-        description:
-            "The Queen’s Pawn Game builds central control and flexible development.",
-        mastery: 10,
-        icon: "chess-pawn",
-        color: "#AED581",
-        difficulty: "Beginner",
-        side: "white",
 
-        moves: ["d4", "Nf6"],
-
-        uci: [
-            "d2d4",
-            "g8f6",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "d4",
-                side: "white",
-                piece: "♙",
-                text: "White controls the center and opens development lines.",
-            },
-            {
-                order: "1...",
-                move: "Nf6",
-                side: "black",
-                piece: "♞",
-                text: "Black develops flexibly and contests central squares.",
-            },
-        ],
-    },
     {
         eco: "E11",
         category: getEcoCategory("E11"),
@@ -1289,38 +1351,7 @@ export const openings: Opening[] = [
             },
         ],
     },
-    {
-        eco: "A02",
-        category: getEcoCategory("A02"),
-        tags: [],
-        name: "Bird Opening",
-        type: "opening",
-        commentary:
-            "An aggressive flank opening focused on kingside initiative.",
-        description:
-            "The Bird Opening creates flexible attacking opportunities and unusual structures.",
-        mastery: 5,
-        icon: "feather",
-        color: "#26C6DA",
-        difficulty: "Intermediate",
-        side: "white",
 
-        moves: ["f4"],
-
-        uci: [
-            "f2f4",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "f4",
-                side: "white",
-                piece: "♙",
-                text: "White fights for e5 control and kingside attacking chances.",
-            },
-        ],
-    },
     {
         eco: "A06",
         category: getEcoCategory("A06"),
@@ -1332,7 +1363,7 @@ export const openings: Opening[] = [
         description:
             "The Benoni Defense creates dynamic counterplay and tactical middlegames.",
         mastery: 6,
-        icon: "fire",
+        icon: "chess-pawn",
         color: "#E57373",
         difficulty: "Advanced",
         side: "black",
@@ -1378,6 +1409,74 @@ export const openings: Opening[] = [
         ],
     },
     {
+        eco: "A07",
+        category: getEcoCategory("A07"),
+        tags: [],
+        name: "King's Indian Attack",
+        type: "opening",
+        commentary:
+            "A universal attacking setup that can be played against many defenses.",
+        description:
+            "The King's Indian Attack focuses on flexible development, kingside safety, and eventual attacking chances. White often builds slowly before launching a coordinated kingside assault.",
+
+        mastery: 12,
+        icon: "chess-knight",
+        color: "#26A69A",
+        difficulty: "Intermediate",
+        side: "white",
+
+        moves: ["Nf3", "d5", "g3", "Nf6", "Bg2"],
+
+        uci: [
+            "g1f3",
+            "d7d5",
+            "g2g3",
+            "g8f6",
+            "f1g2",
+        ],
+
+        moveDetails: [
+            {
+                order: "1.",
+                move: "Nf3",
+                side: "white",
+                piece: "♘",
+                text: "White develops flexibly while controlling central squares.",
+            },
+            {
+                order: "1...",
+                move: "d5",
+                side: "black",
+                piece: "♟",
+                text: "Black immediately claims central space.",
+            },
+            {
+                order: "2.",
+                move: "g3",
+                side: "white",
+                piece: "♙",
+                text: "White prepares a kingside bishop fianchetto.",
+            },
+            {
+                order: "2...",
+                move: "Nf6",
+                side: "black",
+                piece: "♞",
+                text: "Black develops naturally and controls e4.",
+            },
+            {
+                order: "3.",
+                move: "Bg2",
+                side: "white",
+                piece: "♗",
+                text: "The bishop becomes very powerful along the long diagonal.",
+            },
+        ],
+    },
+
+
+
+    {
         eco: "B23",
         category: getEcoCategory("B23"),
         tags: [],
@@ -1389,7 +1488,7 @@ export const openings: Opening[] = [
             "Instead of immediately opening the center, White develops carefully and often prepares a kingside pawn storm. The Closed Sicilian creates strategic positions with long-term attacking chances and flexible maneuvering.",
 
         mastery: 8,
-        icon: "lock",
+        icon: "chess-knight",
         color: "#5C6BC0",
         difficulty: "Intermediate",
         side: "white",
@@ -1438,7 +1537,7 @@ export const openings: Opening[] = [
             "The Closed Defense leads to rich positional battles where both sides slowly improve their pieces before launching attacks. It is one of the most respected structures in classical chess.",
 
         mastery: 6,
-        icon: "castle",
+        icon: "chess-bishop",
         color: "#8D6E63",
         difficulty: "Advanced",
         side: "black",
@@ -1543,7 +1642,7 @@ export const openings: Opening[] = [
             "The Blackmar-Diemer Gambit creates open lines and fast piece activity. White aims to overwhelm Black with initiative before the extra pawn becomes important.",
 
         mastery: 5,
-        icon: "sword",
+        icon: "chess-pawn",
         color: "#EC407A",
         difficulty: "Advanced",
         side: "white",
@@ -1596,128 +1695,8 @@ export const openings: Opening[] = [
             },
         ],
     },
-    {
-        eco: "A07",
-        category: getEcoCategory("A07"),
-        tags: [],
-        name: "King's Indian Attack",
-        type: "opening",
-        commentary:
-            "A universal attacking setup that can be played against many defenses.",
-        description:
-            "The King's Indian Attack focuses on flexible development, kingside safety, and eventual attacking chances. White often builds slowly before launching a coordinated kingside assault.",
 
-        mastery: 12,
-        icon: "shield-half-full",
-        color: "#26A69A",
-        difficulty: "Intermediate",
-        side: "white",
 
-        moves: ["Nf3", "d5", "g3", "Nf6", "Bg2"],
-
-        uci: [
-            "g1f3",
-            "d7d5",
-            "g2g3",
-            "g8f6",
-            "f1g2",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "Nf3",
-                side: "white",
-                piece: "♘",
-                text: "White develops flexibly while controlling central squares.",
-            },
-            {
-                order: "1...",
-                move: "d5",
-                side: "black",
-                piece: "♟",
-                text: "Black immediately claims central space.",
-            },
-            {
-                order: "2.",
-                move: "g3",
-                side: "white",
-                piece: "♙",
-                text: "White prepares a kingside bishop fianchetto.",
-            },
-            {
-                order: "2...",
-                move: "Nf6",
-                side: "black",
-                piece: "♞",
-                text: "Black develops naturally and controls e4.",
-            },
-            {
-                order: "3.",
-                move: "Bg2",
-                side: "white",
-                piece: "♗",
-                text: "The bishop becomes very powerful along the long diagonal.",
-            },
-        ],
-    },
-    {
-        eco: "A51",
-        category: getEcoCategory("A51"),
-        tags: [],
-        name: "Budapest Gambit",
-        type: "defense",
-        commentary:
-            "A surprising gambit where Black sacrifices a pawn for active piece play.",
-        description:
-            "The Budapest Gambit creates immediate tactical complications and rapid development. Black aims to gain initiative and disrupt White’s center before White consolidates.",
-
-        mastery: 4,
-        icon: "bolt",
-        color: "#FF7043",
-        difficulty: "Intermediate",
-        side: "black",
-
-        moves: ["d4", "Nf6", "c4", "e5"],
-
-        uci: [
-            "d2d4",
-            "g8f6",
-            "c2c4",
-            "e7e5",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "d4",
-                side: "white",
-                piece: "♙",
-                text: "White occupies the center and prepares development.",
-            },
-            {
-                order: "1...",
-                move: "Nf6",
-                side: "black",
-                piece: "♞",
-                text: "Black develops flexibly and contests central control.",
-            },
-            {
-                order: "2.",
-                move: "c4",
-                side: "white",
-                piece: "♙",
-                text: "White strengthens the center and gains queenside space.",
-            },
-            {
-                order: "2...",
-                move: "e5",
-                side: "black",
-                piece: "♟",
-                text: "Black offers a pawn to create immediate activity and tactical pressure.",
-            },
-        ],
-    },
     {
         eco: "B21",
         category: getEcoCategory("B21"),
@@ -1730,7 +1709,7 @@ export const openings: Opening[] = [
             "The Smith-Morra Gambit creates open lines, fast piece activity, and attacking opportunities against the Sicilian Defense. White aims to punish slow development and generate early initiative.",
 
         mastery: 6,
-        icon: "sword",
+        icon: "chess-pawn",
         color: "#EF5350",
         difficulty: "Advanced",
         side: "white",
@@ -1852,7 +1831,7 @@ export const openings: Opening[] = [
             "Instead of defending passively, Black immediately strikes back in the center with an aggressive pawn sacrifice. The Albin Countergambit creates tactical complications and surprise attacking chances.",
 
         mastery: 4,
-        icon: "bolt",
+        icon: "chess-pawn",
         color: "#FF7043",
         difficulty: "Advanced",
         side: "black",
@@ -1897,47 +1876,7 @@ export const openings: Opening[] = [
             },
         ],
     },
-    {
-        eco: "A40",
-        category: getEcoCategory("A40"),
-        tags: [],
-        name: "Englund Gambit",
-        type: "defense",
-        commentary:
-            "A tricky and aggressive gambit against d4.",
-        description:
-            "The Englund Gambit sacrifices a pawn early to create tactical traps and rapid development. While objectively risky, it can be dangerous against unprepared opponents.",
 
-        mastery: 3,
-        icon: "fire",
-        color: "#E57373",
-        difficulty: "Intermediate",
-        side: "black",
-
-        moves: ["d4", "e5"],
-
-        uci: [
-            "d2d4",
-            "e7e5",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "d4",
-                side: "white",
-                piece: "♙",
-                text: "White immediately controls central space.",
-            },
-            {
-                order: "1...",
-                move: "e5",
-                side: "black",
-                piece: "♟",
-                text: "Black offers a pawn to create quick attacking chances and tactical pressure.",
-            },
-        ],
-    },
     {
         eco: "C47",
         category: getEcoCategory("C47"),
@@ -2011,63 +1950,7 @@ export const openings: Opening[] = [
             },
         ],
     },
-    {
-        eco: "A48",
-        category: getEcoCategory("A48"),
-        tags: [],
-        name: "East Indian Defense",
-        type: "defense",
-        commentary:
-            "A flexible defense with transpositional possibilities into Indian systems.",
-        description:
-            "The East Indian Defense focuses on careful development and flexible pawn structures. Black keeps options open while preparing kingside development and central counterplay.",
 
-        mastery: 3,
-        icon: "shield",
-        color: "#90A4AE",
-        difficulty: "Intermediate",
-        side: "black",
-
-        moves: ["d4", "Nf6", "Nf3", "g6"],
-
-        uci: [
-            "d2d4",
-            "g8f6",
-            "g1f3",
-            "g7g6",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "d4",
-                side: "white",
-                piece: "♙",
-                text: "White establishes central control immediately.",
-            },
-            {
-                order: "1...",
-                move: "Nf6",
-                side: "black",
-                piece: "♞",
-                text: "Black develops flexibly and contests central squares.",
-            },
-            {
-                order: "2.",
-                move: "Nf3",
-                side: "white",
-                piece: "♘",
-                text: "White develops naturally and prepares kingside safety.",
-            },
-            {
-                order: "2...",
-                move: "g6",
-                side: "black",
-                piece: "♟",
-                text: "Black prepares a kingside bishop fianchetto and flexible structure.",
-            },
-        ],
-    },
     {
         eco: "C20",
         category: getEcoCategory("C20"),
@@ -2223,169 +2106,8 @@ export const openings: Opening[] = [
             },
         ],
     },
-    {
-        eco: "A52",
-        category: getEcoCategory("A52"),
-        tags: [],
-        name: "Budapest Gambit: Adler Variation",
-        type: "defense",
-        commentary:
-            "A tactical variation of the Budapest Gambit with active piece play.",
-        description:
-            "The Adler Variation creates immediate pressure on White’s center and development. Black seeks rapid activity and tactical opportunities instead of slow positional play.",
 
-        mastery: 4,
-        icon: "chess-queen",
-        color: "#FFCA28",
-        difficulty: "Intermediate",
-        side: "black",
 
-        moves: ["d4", "Nf6", "c4", "e5", "dxe5", "Ng4"],
-
-        uci: [
-            "d2d4",
-            "g8f6",
-            "c2c4",
-            "e7e5",
-            "d4e5",
-            "f6g4",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "d4",
-                side: "white",
-                piece: "♙",
-                text: "White establishes strong central control.",
-            },
-            {
-                order: "1...",
-                move: "Nf6",
-                side: "black",
-                piece: "♞",
-                text: "Black develops flexibly and contests the center.",
-            },
-            {
-                order: "2.",
-                move: "c4",
-                side: "white",
-                piece: "♙",
-                text: "White strengthens central influence and gains queenside space.",
-            },
-            {
-                order: "2...",
-                move: "e5",
-                side: "black",
-                piece: "♟",
-                text: "Black sacrifices a pawn for quick activity and central pressure.",
-            },
-            {
-                order: "3.",
-                move: "dxe5",
-                side: "white",
-                piece: "♙",
-                text: "White accepts the gambit pawn.",
-            },
-            {
-                order: "3...",
-                move: "Ng4",
-                side: "black",
-                piece: "♞",
-                text: "Black attacks the advanced pawn and creates tactical threats.",
-            },
-        ],
-    },
-    {
-        eco: "A09",
-        category: getEcoCategory("A09"),
-        tags: [],
-        name: "Reti Gambit",
-        type: "opening",
-        commentary:
-            "An aggressive approach within the Reti Opening focused on rapid activity.",
-        description:
-            "The Reti Gambit combines flexible development with early central pressure. White seeks dynamic play and active piece coordination while avoiding traditional opening theory.",
-
-        mastery: 3,
-        icon: "chess-rook",
-        color: "#26C6DA",
-        difficulty: "Intermediate",
-        side: "white",
-
-        moves: ["Nf3", "d5", "c4"],
-
-        uci: [
-            "g1f3",
-            "d7d5",
-            "c2c4",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "Nf3",
-                side: "white",
-                piece: "♘",
-                text: "White develops flexibly while controlling central squares.",
-            },
-            {
-                order: "1...",
-                move: "d5",
-                side: "black",
-                piece: "♟",
-                text: "Black immediately claims central space.",
-            },
-            {
-                order: "2.",
-                move: "c4",
-                side: "white",
-                piece: "♙",
-                text: "White challenges Black’s center and creates queenside pressure.",
-            },
-        ],
-    },
-    {
-        eco: "A10",
-        category: getEcoCategory("A10"),
-        tags: [],
-        name: "Anglo-Indian Defense",
-        type: "defense",
-        commentary:
-            "A flexible opening system with rich transpositional possibilities.",
-        description:
-            "The Anglo-Indian Defense creates strategic positions focused on flexible development and long-term positional play. Both sides often maneuver carefully before committing to central pawn breaks.",
-
-        mastery: 5,
-        icon: "chess-king",
-        color: "#66BB6A",
-        difficulty: "Intermediate",
-        side: "black",
-
-        moves: ["c4", "Nf6"],
-
-        uci: [
-            "c2c4",
-            "g8f6",
-        ],
-
-        moveDetails: [
-            {
-                order: "1.",
-                move: "c4",
-                side: "white",
-                piece: "♙",
-                text: "White controls the d5 square and prepares flexible development.",
-            },
-            {
-                order: "1...",
-                move: "Nf6",
-                side: "black",
-                piece: "♞",
-                text: "Black develops naturally and contests key central squares.",
-            },
-        ],
-    },
     {
         eco: "B13",
         category: getEcoCategory("B13"),
@@ -2834,7 +2556,6 @@ export const openings: Opening[] = [
             "A sharp and strategic variation of the King's Indian Defense.",
         description:
             "The Classical Variation creates complex middlegame positions where Black attacks on the kingside while White seeks queenside and central expansion. Timing and piece coordination are critical for both sides.",
-
         mastery: 9,
         icon: "chess-king",
         color: "#AB47BC",
@@ -2902,6 +2623,101 @@ export const openings: Opening[] = [
                 side: "white",
                 piece: "♙",
                 text: "White creates a powerful pawn center and gains additional space.",
+            },
+        ],
+    },
+    {
+        eco: "A10",
+        category: getEcoCategory("A10"),
+        tags: ["Flank Opening", "Hypermodern", "Strategic"],
+        name: "English Opening",
+        type: "opening",
+        commentary:
+            "A flexible flank opening that emphasizes long-term positional pressure and control of key central squares.",
+        description:
+            "The English Opening begins with 1.c4. Instead of immediately occupying the center with a pawn, White controls important central squares from the flank and keeps many development options open. It can transpose into a wide variety of openings and is favored by players who enjoy strategic maneuvering.",
+        mastery: 0,
+        icon: "chess-pawn",
+        color: "#4DB6AC",
+        difficulty: "Beginner",
+        side: "white",
+
+        moves: [
+            "c4",
+        ],
+
+        uci: [
+            "c2c4",
+        ],
+
+        moveDetails: [
+            {
+                order: "1.",
+                move: "c4",
+                side: "white",
+                piece: "♙",
+                text: "White controls the important d5 square and begins a flexible flank opening with many strategic possibilities.",
+            },
+        ],
+    },
+    {
+        eco: "C42",
+        category: getEcoCategory("C42"),
+        tags: ["Open Game", "Classical", "Solid"],
+        name: "Petroff Defense",
+        type: "opening",
+        commentary:
+            "A highly respected defense that immediately challenges White's central pawn and often leads to balanced positions.",
+        description:
+            "The Petroff Defense, also known as the Russian Game, begins with 1.e4 e5 2.Nf3 Nf6. Rather than defending the e5 pawn, Black counterattacks White's e4 pawn. The opening is known for its solidity, soundness, and popularity at all levels of play, including world championship matches.",
+        mastery: 0,
+        icon: "chess-knight",
+        color: "#90CAF9",
+        difficulty: "Beginner",
+        side: "black",
+
+        moves: [
+            "e4",
+            "e5",
+            "Nf3",
+            "Nf6",
+        ],
+
+        uci: [
+            "e2e4",
+            "e7e5",
+            "g1f3",
+            "g8f6",
+        ],
+
+        moveDetails: [
+            {
+                order: "1.",
+                move: "e4",
+                side: "white",
+                piece: "♙",
+                text: "White claims central space and opens lines for the queen and bishop.",
+            },
+            {
+                order: "1...",
+                move: "e5",
+                side: "black",
+                piece: "♟",
+                text: "Black responds symmetrically and contests the center.",
+            },
+            {
+                order: "2.",
+                move: "Nf3",
+                side: "white",
+                piece: "♘",
+                text: "White develops a knight and attacks Black's e5 pawn.",
+            },
+            {
+                order: "2...",
+                move: "Nf6",
+                side: "black",
+                piece: "♞",
+                text: "Instead of defending e5, Black counterattacks White's e4 pawn, entering the Petroff Defense.",
             },
         ],
     },
@@ -2979,32 +2795,39 @@ export const openings: Opening[] = [
         ],
     },
     {
-        eco: "B03",
-        category: getEcoCategory("B03"),
-        tags: [],
-        name: "Alekhine Defense: Four Pawns Attack",
-        type: "defense",
+        eco: "C51",
+        category: getEcoCategory("C51"),
+        tags: ["Gambit", "Open Game", "Aggressive"],
+        name: "Evans Gambit",
+        type: "opening",
         commentary:
-            "A highly aggressive response to the Alekhine Defense.",
+            "A classic attacking gambit where White sacrifices a pawn for rapid development and initiative.",
         description:
-            "The Four Pawns Attack gives White massive central space and attacking potential. Black aims to provoke overextension and later undermine the advanced pawn structure with tactical counterplay.",
-
-        mastery: 5,
-        icon: "chess-knight",
-        color: "#EC407A",
-        difficulty: "Advanced",
+            "The Evans Gambit arises after 1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.b4. White offers a wing pawn to distract Black's bishop and gain time for rapid development and attacking chances. It was a favorite of many great attacking players and remains one of the most famous gambits in chess history.",
+        mastery: 0,
+        icon: "chess-bishop",
+        color: "#FF8A65",
+        difficulty: "Intermediate",
         side: "white",
 
-        moves: ["e4", "Nf6", "e5", "Nd5", "d4", "d6", "c4"],
+        moves: [
+            "e4",
+            "e5",
+            "Nf3",
+            "Nc6",
+            "Bc4",
+            "Bc5",
+            "b4",
+        ],
 
         uci: [
             "e2e4",
-            "g8f6",
-            "e4e5",
-            "f6d5",
-            "d2d4",
-            "d7d6",
-            "c2c4",
+            "e7e5",
+            "g1f3",
+            "b8c6",
+            "f1c4",
+            "f8c5",
+            "b2b4",
         ],
 
         moveDetails: [
@@ -3013,52 +2836,166 @@ export const openings: Opening[] = [
                 move: "e4",
                 side: "white",
                 piece: "♙",
-                text: "White immediately controls central space.",
+                text: "White claims central space and opens lines for development.",
             },
             {
                 order: "1...",
-                move: "Nf6",
+                move: "e5",
                 side: "black",
-                piece: "♞",
-                text: "Black attacks the e4 pawn and invites central expansion.",
+                piece: "♟",
+                text: "Black responds symmetrically and contests the center.",
             },
             {
                 order: "2.",
-                move: "e5",
+                move: "Nf3",
                 side: "white",
-                piece: "♙",
-                text: "White gains space and attacks the knight.",
+                piece: "♘",
+                text: "White develops a knight and attacks the e5 pawn.",
             },
             {
                 order: "2...",
-                move: "Nd5",
+                move: "Nc6",
                 side: "black",
                 piece: "♞",
-                text: "Black retreats while provoking further pawn advances.",
+                text: "Black defends the pawn and develops naturally.",
             },
             {
                 order: "3.",
-                move: "d4",
+                move: "Bc4",
                 side: "white",
-                piece: "♙",
-                text: "White builds a large and aggressive pawn center.",
+                piece: "♗",
+                text: "White targets the vulnerable f7 square.",
             },
             {
                 order: "3...",
-                move: "d6",
+                move: "Bc5",
                 side: "black",
-                piece: "♟",
-                text: "Black prepares to challenge White’s advanced center.",
+                piece: "♝",
+                text: "Black develops actively and mirrors White's bishop.",
             },
             {
                 order: "4.",
-                move: "c4",
+                move: "b4",
                 side: "white",
                 piece: "♙",
-                text: "White expands even further and gains massive central space.",
+                text: "White offers a pawn to deflect Black's bishop and gain time for rapid development.",
             },
         ],
     },
+    {
+        eco: "D06",
+        category: getEcoCategory("D06"),
+        tags: ["Queen's Pawn", "Classical", "Strategic"],
+        name: "Queen's Gambit",
+        type: "opening",
+        commentary:
+            "One of the most respected openings in chess, offering White strong central control and long-term strategic pressure.",
+        description:
+            "The Queen's Gambit begins with 1.d4 d5 2.c4. White offers the c-pawn to challenge Black's central d5 pawn and gain greater influence over the center. Despite its name, the pawn sacrifice is usually temporary, making it a strategic opening rather than a true gambit.",
+        mastery: 0,
+        icon: "chess-pawn",
+        color: "#64B5F6",
+        difficulty: "Beginner",
+        side: "white",
+
+        moves: [
+            "d4",
+            "d5",
+            "c4",
+        ],
+
+        uci: [
+            "d2d4",
+            "d7d5",
+            "c2c4",
+        ],
+
+        moveDetails: [
+            {
+                order: "1.",
+                move: "d4",
+                side: "white",
+                piece: "♙",
+                text: "White occupies the center and opens lines for the queen and dark-squared bishop.",
+            },
+            {
+                order: "1...",
+                move: "d5",
+                side: "black",
+                piece: "♟",
+                text: "Black responds by claiming central space and matching White's presence in the center.",
+            },
+            {
+                order: "2.",
+                move: "c4",
+                side: "white",
+                piece: "♙",
+                text: "White challenges Black's d5 pawn and seeks greater central influence. This move defines the Queen's Gambit.",
+            },
+        ],
+    },
+    {
+        eco: "D20",
+        category: getEcoCategory("D20"),
+        tags: ["Queen's Gambit", "Accepted", "Classical"],
+        name: "Queen's Gambit Accepted",
+        type: "opening",
+        commentary:
+            "Black accepts White's offered pawn and aims for active piece play while challenging White's center.",
+        description:
+            "The Queen's Gambit Accepted arises after 1.d4 d5 2.c4 dxc4. Black temporarily wins a pawn but must be careful not to fall behind in development while White seeks central control and rapid piece activity.",
+        mastery: 0,
+        icon: "chess-pawn",
+        color: "#64B5F6",
+        difficulty: "Intermediate",
+        side: "white",
+
+        moves: [
+            "d4",
+            "d5",
+            "c4",
+            "dxc4",
+        ],
+
+        uci: [
+            "d2d4",
+            "d7d5",
+            "c2c4",
+            "d5c4",
+        ],
+
+        moveDetails: [
+            {
+                order: "1.",
+                move: "d4",
+                side: "white",
+                piece: "♙",
+                text: "White occupies the center and prepares active development.",
+            },
+            {
+                order: "1...",
+                move: "d5",
+                side: "black",
+                piece: "♟",
+                text: "Black contests White's central control.",
+            },
+            {
+                order: "2.",
+                move: "c4",
+                side: "white",
+                piece: "♙",
+                text: "White challenges Black's d5 pawn and initiates the Queen's Gambit.",
+            },
+            {
+                order: "2...",
+                move: "dxc4",
+                side: "black",
+                piece: "♟",
+                text: "Black accepts the gambit pawn and attempts to hold material while developing efficiently.",
+            },
+        ],
+    },
+
     {
         eco: "C25",
         category: getEcoCategory("C25"),

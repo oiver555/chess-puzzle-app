@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import {
     View,
     Text,
@@ -9,22 +9,43 @@ import {
     FlatList,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import Header from "@/components/Header";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Footer } from "@/components/Footer";
 import { getEcoCategory } from "@/util/chessUtils";
 import { COLORS } from "@/theme/colors";
 import AdBanner from "@/components/AdBanner";
 import { LinearGradient } from "expo-linear-gradient";
-import { openings } from "@/data/openings";
-
-
+import { OpeningProgress, openings } from "@/data/openings";
+import MasteryCircle from "@/components/MasteryCircle";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { STORAGE_KEYS } from "@/constants/storage";
 
 
 
 export default function LearnOpeningsScreen() {
     const router = useRouter();
+    const [progressByOpening, setProgressByOpening] =
+        React.useState<Record<string, OpeningProgress>>({});
+
+
+    useFocusEffect(
+        useCallback(() => {
+            async function loadProgress() {
+                const saved = await AsyncStorage.getItem(
+                    STORAGE_KEYS.OPENING_PROGRESS
+                );
+
+                const allProgress: Record<string, OpeningProgress> = saved
+                    ? JSON.parse(saved)
+                    : {};
+
+                setProgressByOpening(allProgress);
+            }
+
+            loadProgress();
+        }, [])
+    );
 
     return (
         <SafeAreaView style={styles.container}>
@@ -65,8 +86,11 @@ export default function LearnOpeningsScreen() {
                 data={openings}
                 keyExtractor={(item) => item.eco}
                 contentContainerStyle={styles.content}
-                renderItem={({ item: opening }) => (
-                    <Pressable
+                renderItem={({ item: opening }) => {
+                    const openingId = opening.name;
+                    const progress = progressByOpening[openingId];
+                    const mastery = progress?.mastery ?? 0;
+                    return (<Pressable
                         style={styles.card}
                         onPress={() => {
                             router.push({
@@ -87,7 +111,6 @@ export default function LearnOpeningsScreen() {
                                     />
 
                                 </View>
-
                                 <Text style={styles.openingName}>{opening.name}</Text>
                             </View>
 
@@ -106,17 +129,14 @@ export default function LearnOpeningsScreen() {
                         </View>
 
                         <View style={styles.masteryBox}>
-                            <Text style={styles.openingName}></Text>
-                            <View style={[styles.masteryCircle, { borderColor: opening.color }]}>
-                                <Text style={styles.masteryText}>{opening.mastery}%</Text>
-                            </View>
+                            <MasteryCircle fontSize={15} percent={mastery} color={opening.color} size={60} strokeWidth={5} />
 
                             <Text style={[styles.masteryLabel, { color: opening.color }]}>
                                 Mastery
                             </Text>
                         </View>
-                    </Pressable>
-                )}
+                    </Pressable>)
+                }}
                 ListHeaderComponent={
                     <>
                         <View style={styles.searchRow}>
@@ -258,7 +278,7 @@ const styles = StyleSheet.create({
         padding: 16,
         flexDirection: "row",
         alignItems: "center",
-        gap: 16,
+        gap: 10,
     },
 
     openingColumn: {
@@ -282,6 +302,7 @@ const styles = StyleSheet.create({
     masteryBox: {
         width: 90,
         alignItems: "center",
+        alignSelf: "flex-end",
     },
     leftSection: {
         flexDirection: "row",
@@ -380,15 +401,12 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: "800",
     },
-
-
-
-
     openingName: {
         color: COLORS.text.primary,
         fontSize: 22,
         fontWeight: "900",
-        marginBottom: 4,
+        // marginBottom: 4,
+        alignSelf: "flex-start",
     },
 
     eco: {
@@ -405,10 +423,6 @@ const styles = StyleSheet.create({
     },
 
 
-    // masteryBox: {
-    //     alignItems: "center",
-    //     flex: .5
-    // },
 
     masteryCircle: {
         width: 58,
