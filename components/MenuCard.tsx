@@ -15,7 +15,7 @@ export function MenuCard({
     icon: React.ReactNode;
     title: string;
     gold?: boolean;
-    onPress?: () => void;
+    onPress: () => void;
 }) {
 
     const illegalPlayer = useAudioPlayer(SOUNDS.illegal);
@@ -24,7 +24,11 @@ export function MenuCard({
     return (
         <Pressable
             onPressIn={() => playSound(illegalPlayer)}
-            onPress={onPress} style={styles.card}>
+            onPress={() => {
+                playSound(illegalPlayer)
+                onPress()
+            }}
+            style={styles.card}>
             <View style={[styles.cardIcon, gold && styles.cardIconGold]}>{icon}</View>
 
             <View style={styles.cardText}>

@@ -3,22 +3,14 @@ import {
     View,
     Text,
     StyleSheet,
-    Image,
-    Pressable,
-    ScrollView,
-    Dimensions,
-} from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from "@expo/vector-icons";
+    Image, 
+    ScrollView, 
+} from "react-native"; 
+import { Ionicons, MaterialCommunityIcons,  } from "@expo/vector-icons";
 import { router } from "expo-router";
-import * as NavigationBar from "expo-navigation-bar";
-import { useEffect } from "react";
+import * as NavigationBar from "expo-navigation-bar"; 
 import { getLearnedOpeningsCount, loadAppState } from "@/util/storage";
-import { SettingsModal } from "@/components/SettingsModal";
-import { openings } from "@/data/openings";
-import { playSound } from "@/util/chessUtils";
-import { useAudioPlayer } from "expo-audio";
-import { SOUNDS } from "@/util/sounds";
+import { SettingsModal } from "@/components/SettingsModal"; 
 import { MenuCard } from "@/components/MenuCard";
 import { deviceWidth, isNarrowPhone, isSmallPhone } from "@/constants/globals";
 import { COLORS } from "@/theme/colors";
@@ -30,7 +22,7 @@ export default function App() {
     const [showSettings, setShowSettings] = React.useState(false);
     const [learnedOpenings, setLearnedOpenings] = React.useState(0);
    
-    useEffect(() => {
+    React.useEffect(() => {
         NavigationBar.setVisibilityAsync("hidden");
 
         async function load() {
@@ -45,7 +37,7 @@ export default function App() {
     }, []);
 
 
-    useEffect(() => {
+    React.useEffect(() => {
         async function restoreLastScreen() {
             const saved = await loadAppState();
 
@@ -108,6 +100,7 @@ export default function App() {
                         icon={<MaterialCommunityIcons name="puzzle" size={34} color="#fff" />}
                         title="PUZZLES"
                         gold
+                        onPress={() => {}}
                     />
 
                     <MenuCard
@@ -117,8 +110,7 @@ export default function App() {
                     />
                 </View>
             </ScrollView>
-
-            {/* <BottomNav /> */}
+ 
         </View>
     );
 }
@@ -263,7 +255,8 @@ const styles = StyleSheet.create({
         color: "#fff",
         marginTop: 6,
         fontSize: 14,
-    }, progressContainer: {
+    }, 
+    progressContainer: {
         marginTop: 14,
     },
 

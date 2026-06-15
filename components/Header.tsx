@@ -68,9 +68,9 @@ export default function Header({ onSettings, learnedOpenings = 0, variant, subti
                     </View>
 
                     <Pressable style={h1.headerIcon}
-
-                        onPressIn={() => playSound(illegalPlayer)}
+ 
                         onPress={() => {
+                             playSound(illegalPlayer)
                             onSettings()
                         }}>
                         <Ionicons name="settings" size={25} color="#EDE7DA" />
