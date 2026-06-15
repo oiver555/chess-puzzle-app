@@ -27,6 +27,7 @@ import RewardModal from "@/components/RewardModal";
 import WinModal from "@/components/YouWonModal";
 import { playSound } from "@/util/chessUtils";
 import Header from "@/components/Header";
+import { SettingsModal } from "@/components/SettingsModal";
 
 const Match = () => {
     const { side, difficulty } = useLocalSearchParams<{ side?: "w" | "b" | "r"; difficulty?: string; }>();
@@ -55,7 +56,7 @@ const Match = () => {
         to: Square;
     } | null>(null);
     const [showWinModal, setShowWinModal] = React.useState(true);
-  const [showSettings, setShowSettings] = React.useState(false);
+    const [showSettings, setShowSettings] = React.useState(false);
 
     const handlePromotion = (promotion: "q" | "r" | "b" | "n") => {
         if (!promotionMove) return;
@@ -168,7 +169,7 @@ const Match = () => {
         setIsCheckmate(false);
         setSquareInCheck("");
         setRefresh((prev) => prev + 1);
-    }; 
+    };
 
     const playMoveResultSound = (move: any, status: string) => {
         if (status === "checkmate") {
@@ -208,65 +209,84 @@ const Match = () => {
         playSound(movePlayer);
     };
 
-    const waitingForBestMove = React.useRef(false);
+    const multiPvMovesRef = React.useRef<Map<number, string>>(new Map());
+
+    const parseMultiPvLine = (line: string) => {
+        const match = line.match(/multipv\s+(\d+).*?\spv\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
+
+        if (!match) return;
+
+        const multiPvNumber = Number(match[1]);
+        const move = match[2];
+
+        multiPvMovesRef.current.set(multiPvNumber, move);
+    };
 
     const { stockfishLoop, sendCommandToStockfish } = useStockfish({
         onOutput: useCallback((output: string) => {
             const cleanOutput = output.trim();
             if (!cleanOutput) { return }
-            // console.log(cleanOutput);
+
+            console.log(cleanOutput);
+
+            // Capture MultiPV lines
+            if (cleanOutput.includes(" multipv ") && cleanOutput.includes(" pv ")) {
+                parseMultiPvLine(cleanOutput);
+                return;
+            }
 
             const cpMatch = cleanOutput.match(/score cp (-?\d+)/);
 
             if (cpMatch) {
                 const centipawns = Number(cpMatch[1]);
                 const score = centipawns / 100;
-                console.log("Centipawns: ", score);
+                // console.log("Centipawns: ", score);
                 setEvalScore(score);
             }
 
-            if (cleanOutput === "bestmove") {
-                waitingForBestMove.current = true;
-                return;
-            }
+            // When Stockfish finishes searching
+            if (cleanOutput.startsWith("bestmove")) {
+                const preferredPv = 2;
 
-            if (waitingForBestMove.current) {
-                const match = cleanOutput.match(/^([a-h][1-8][a-h][1-8][qrbn]?)$/);
-                if (match) {
-                    const bestMove = match[1];
-                    const from = bestMove.slice(0, 2) as Square;
-                    const to = bestMove.slice(2, 4) as Square;
-                    const promotion = bestMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
+                const selectedMove =
+                    multiPvMovesRef.current.get(preferredPv) ??
+                    multiPvMovesRef.current.get(1);
 
-
-                    const aiMove = moveAiPiece(from, to, promotion || undefined);
-
-
-                    saveMatchState({
-                        fen: getFen(),
-                        playerColor: playerColorRef.current,
-                        aiColor: aiSideRef.current,
-                        lastMove: {
-                            from,
-                            to,
-                        },
-                        savedAt: new Date().toISOString(),
-                    });
-                    setLastMove({
-                        from,
-                        to,
-                    });
-                    const status = checkGameStatus();
-
-                    if (promotion) {
-                        playSound(promotionPlayer);
-                    } else {
-                        playMoveResultSound(aiMove, status);
-                    }
-                    setRefresh((prev) => prev + 1);
+                if (!selectedMove) {
+                    multiPvMovesRef.current.clear();
+                    return;
                 }
-                waitingForBestMove.current = false;
+
+                const from = selectedMove.slice(0, 2) as Square;
+                const to = selectedMove.slice(2, 4) as Square;
+                const promotion = selectedMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
+
+                const aiMove = moveAiPiece(from, to, promotion || undefined);
+                console.log(selectedMove);
+
+                saveMatchState({
+                    fen: getFen(),
+                    playerColor: playerColorRef.current,
+                    aiColor: aiSideRef.current,
+                    lastMove: { from, to },
+                    savedAt: new Date().toISOString(),
+                });
+
+                setLastMove({ from, to });
+
+                const status = checkGameStatus();
+
+                if (promotion) {
+                    playSound(promotionPlayer);
+                } else {
+                    playMoveResultSound(aiMove, status);
+                }
+
+                setRefresh((prev) => prev + 1);
+
+                multiPvMovesRef.current.clear();
             }
+
         }, []),
 
         onError: useCallback((error: string) => {
@@ -402,16 +422,58 @@ const Match = () => {
     };
 
     const pathname = usePathname()
+
     useEffect(() => {
         stockfishLoop();
         sendCommandToStockfish("uci");
-        sendCommandToStockfish("setoption name UCI_LimitStrength value true");
-        sendCommandToStockfish("setoption name UCI_Elo value 400");
+        sendCommandToStockfish("setoption name UCI_LimitStrength value false");
+        sendCommandToStockfish("setoption name UCI_Elo value 3000");
+        sendCommandToStockfish("setoption name MultiPV value 5");
+        sendCommandToStockfish("setoption name Threads value 3");
         sendCommandToStockfish("isready");
         sendCommandToStockfish("ucinewgame");
-        // game.load(TEST_FEN);
+        
+      
+        
         setRefresh((prev) => prev + 1)
-        movePlayer.seekTo(0);
+        
+
+        // SAVE APP STATE
+        saveAppState({
+            lastRoute: pathname,
+            savedAt: new Date().toISOString(),
+        });
+
+        // RESTORE MATCH IF POSSIBLE
+        async function restoreMatch() {
+
+            const saved = await loadMatchState();
+
+            if (!saved) {
+                if (playerColorRef.current === "b") {
+                    const timer = setTimeout(() => {
+                        getAiMove();
+                    }, 2000);
+
+                    return () => clearTimeout(timer);
+
+                }
+                return;
+            }
+
+            game.load(saved.fen);
+            setRefresh(prev => prev + 1)
+            if (saved.lastMove) {
+                setLastMove(saved.lastMove);
+            }
+
+            if (game.turn() === aiSideRef.current) {
+                getAiMove();
+            }
+        }
+
+        restoreMatch();
+
         return () => {
             setSelectedSquare(null);
             setLegalMoves([]);
@@ -420,53 +482,11 @@ const Match = () => {
         };
     }, []);
 
-    useEffect(() => {
-        saveAppState({
-            lastRoute: pathname,
-            savedAt: new Date().toISOString(),
-        });
-
-        async function restoreMatch() {
-
-            const saved = await loadMatchState();
-
-            if (!saved) {
-                if (playerColorRef.current === "b") {
-                    getAiMove();
-                }
-                return;
-            }
-
-            game.load(saved.fen);
-
-            setRefresh(prev => prev + 1)
-
-            if (saved.lastMove) {
-                setLastMove(saved.lastMove);
-            }
-
-            if (game.turn() === aiSideRef.current) {
-                getAiMove();
-            }
-
-        }
-
-        restoreMatch();
-    }, []);
-
-
-
     const gameOver = game.isGameOver();
     const checkmate = game.isCheckmate();
-
-    const playerWon =
-        checkmate && game.turn() === aiSideRef.current;
-
-    const playerLost =
-        checkmate && game.turn() === playerColorRef.current;
-
-    const isDraw =
-        gameOver && !checkmate;
+    const playerWon = checkmate && game.turn() === aiSideRef.current;
+    const playerLost = checkmate && game.turn() === playerColorRef.current;
+    const isDraw = gameOver && !checkmate;
 
 
     useEffect(() => {
@@ -534,9 +554,7 @@ const Match = () => {
                 </View>
             </Modal>
 
-            <WinModal
-
-                visible={showWinModal}
+            <WinModal visible={showWinModal}
                 wins={1}
                 requiredWins={5}
                 onNewGame={() => {
@@ -568,35 +586,10 @@ const Match = () => {
                 }}
             />
             <PromotionModal visible={promotionMove !== null} playerColor={playerColorRef.current} onPromote={handlePromotion} />
-            {/* <LinearGradient colors={[COLORS.header.dark, COLORS.header.dark2]} style={styles.header}>
-                <Text style={styles.level}>LEVEL</Text>
-                <Text style={styles.rank}>{difficulty}</Text>
-            </LinearGradient> */}
+            <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
 
-            <Header title="LEVEL" subtitle={difficulty} variant={2} onSettings={() => setShowSettings(true)}  />
+            <Header location={"/ComputerSettings"} title={difficulty} variant={2} onSettings={() => setShowSettings(true)} />
 
-            <View style={styles.backRow}>
-                <Pressable
-                    onPress={() => setShowExitModal(true)}
-                    style={styles.backButton}
-                >
-                    <Ionicons name="chevron-back" size={28} color="#fff" />
-                </Pressable>
-            </View>
-            <View style={styles.settingsRow}>
-                <Pressable
-                    onPress={() => {
-                        // open settings
-                    }}
-                    style={styles.settingsButton}
-                >
-                    <Ionicons
-                        name="settings-sharp"
-                        size={24}
-                        color="#fff"
-                    />
-                </Pressable>
-            </View>
             <View style={styles.content}>
                 <View style={styles.boardWrap}>
                     {/* <EvalBar score={evalScore} /> */}
@@ -845,7 +838,7 @@ const styles = StyleSheet.create({
         borderBottomColor: COLORS.board.border,
         backgroundColor: COLORS.background,
     },
-   
+
     backRow: {
         position: "absolute",
         top: 55,

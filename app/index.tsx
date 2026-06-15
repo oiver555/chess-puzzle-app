@@ -42,17 +42,20 @@ export default function App() {
             const saved = await loadAppState();
 
             if (saved?.lastRoute === "/Match") {
+                console.log("Reload Last Location");
+                
                 router.replace(saved.lastRoute);
             }
         }
 
         restoreLastScreen();
     }, []);
+    
     return (
         <View style={styles.screen}>
             <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
 
-            <Header title="CHESSMASTER" subtitle="OPENING SCHOLAR" variant={1} onSettings={() => setShowSettings(true)} learnedOpenings={learnedOpenings} />
+            <Header location="" title="CHESSMASTER" subtitle="OPENING SCHOLAR" variant={1} onSettings={() => setShowSettings(true)} learnedOpenings={learnedOpenings} />
 
             <ScrollView
                 style={styles.content}

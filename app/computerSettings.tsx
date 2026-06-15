@@ -13,6 +13,9 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { saveAppState } from "@/util/storage";
 import Header from "@/components/Header";
 import { SettingsModal } from "@/components/SettingsModal";
+import { playSound } from "@/util/chessUtils";
+import { useAudioPlayer } from "expo-audio";
+import { SOUNDS } from "@/util/sounds";
 
 const { width, height } = Dimensions.get("window");
 
@@ -28,43 +31,46 @@ const COLORS = {
   text: "#07352D",
   muted: "#385A52",
 };
+type Difficulty = "rookie" | "skilled" | "advanced" | "master";
 
-const difficulties = [
-  {
-    id: "rookie",
-    title: "ROOKIE",
-    // subtitle: "Beginners",
-    elo: "400 - 800 ELO",
-    icon: "chess-knight",
-  },
-  {
-    id: "intermediate",
-    title: "SKILLED",
-    subtitle: "Improve your strategy",
-    elo: "800 - 1200 ELO",
-    icon: "chess-bishop",
-  },
-  {
-    id: "advanced",
-    title: "ADVANCED",
-    subtitle: "Strong tactical play",
-    elo: "1200 - 1600 ELO",
-    icon: "chess-rook",
-  },
-  {
-    id: "master",
-    title: "MASTER",
-    subtitle: "For experienced players",
-    elo: "1600+ ELO",
-    icon: "chess-queen",
-  },
-];
+const difficulties: {
+  title: Difficulty;
+  subtitle: string;
+  elo: string;
+  icon: string; 
+
+}[] = [
+    { 
+      title: "rookie",
+      subtitle: "Beginners",
+      elo: "400 - 800 ELO",
+      icon: "chess-knight",
+    },
+    {
+      title: "skilled",
+      subtitle: "Improve your strategy",
+      elo: "800 - 1200 ELO",
+      icon: "chess-bishop",
+    },
+    {
+      title: "advanced",
+      subtitle: "Strong tactical play",
+      elo: "1200 - 1600 ELO",
+      icon: "chess-rook",
+    },
+    {
+      title: "master",
+      subtitle: "For experienced players",
+      elo: "1600+ ELO",
+      icon: "chess-queen",
+    },
+  ];
 
 export default function ComputerSettings() {
   const [side, setSide] = useState<"w" | "r" | "b">("w");
-  const [difficulty, setDifficulty] = useState("rookie");
+  const [difficulty, setDifficulty] = useState<Difficulty>("rookie");
   const [showSettings, setShowSettings] = React.useState(false);
-
+  const illegalPlayer = useAudioPlayer(SOUNDS.illegal);
   const pathname = usePathname()
 
   useEffect(() => {
@@ -80,7 +86,7 @@ export default function ComputerSettings() {
     <View style={styles.screen}>
       <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
 
-      <Header onSettings={() => setShowSettings(true)} variant={3} title="PLAY VS COMPUTER" />
+      <Header location="\" onSettings={() => setShowSettings(true)} variant={3} title="PLAY VS COMPUTER" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -112,21 +118,30 @@ export default function ComputerSettings() {
             label="WHITE"
             icon="chess-pawn"
             active={side === "w"}
-            onPress={() => setSide("w")}
+            onPress={() => {
+              playSound(illegalPlayer)
+              setSide("w")
+            }}
           />
 
           <SideOption
             label="RANDOM"
             icon="shuffle-variant"
             active={side === "r"}
-            onPress={() => setSide("r")}
+            onPress={() => {
+              playSound(illegalPlayer)
+              setSide("r")
+            }}
           />
 
           <SideOption
             label="BLACK"
             icon="chess-pawn"
             active={side === "b"}
-            onPress={() => setSide("b")}
+            onPress={() => {
+              playSound(illegalPlayer)
+              setSide("b")
+            }}
             darkPiece
           />
         </View>
@@ -135,12 +150,15 @@ export default function ComputerSettings() {
 
         <View style={styles.difficultyCard}>
           {difficulties.map((item, index) => {
-            const active = difficulty === item.id;
+            const active = difficulty === item.title;
 
             return (
               <Pressable
-                key={item.id}
-                onPress={() => setDifficulty(item.id)}
+                key={item.title}
+                onPress={() => {
+                  playSound(illegalPlayer)
+                  setDifficulty(item.title)
+                }}
                 style={[
                   styles.difficultyRow,
                   active && styles.difficultyRowActive,
@@ -160,7 +178,7 @@ export default function ComputerSettings() {
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     style={[styles.diffTitle, active && styles.diffTitleActive]}>
-                    {item.title}
+                    {item.title.toUpperCase()}
                   </Text>
                 </View>
 
@@ -186,7 +204,8 @@ export default function ComputerSettings() {
 
         <Pressable
           style={styles.startButton}
-          onPress={() =>
+          onPress={() => {
+            playSound(illegalPlayer)
             router.push({
               pathname: "/Match",
               params: {
@@ -194,14 +213,14 @@ export default function ComputerSettings() {
                 difficulty,
               },
             })
-          }
+          }}
         >
           <MaterialCommunityIcons name="chess-king" size={36} color={COLORS.gold} />
           <Text style={styles.startText}>START</Text>
           <Ionicons name="chevron-forward" size={34} color={COLORS.gold} />
         </Pressable>
       </ScrollView>
-    </View>
+    </View >
   );
 }
 

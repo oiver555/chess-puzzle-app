@@ -22,8 +22,7 @@ export function MenuCard({
 
 
     return (
-        <Pressable
-            onPressIn={() => playSound(illegalPlayer)}
+        <Pressable 
             onPress={() => {
                 playSound(illegalPlayer)
                 onPress()

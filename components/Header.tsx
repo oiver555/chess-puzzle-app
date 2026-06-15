@@ -3,6 +3,7 @@ import { openings } from "@/data/openings";
 import { COLORS } from "@/theme/colors";
 import { playSound } from "@/util/chessUtils";
 import { SOUNDS } from "@/util/sounds";
+import { clearMatchState } from "@/util/storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useAudioPlayer } from "expo-audio";
 import { LinearGradient } from "expo-linear-gradient";
@@ -16,16 +17,19 @@ type AppHeaderProps = {
     variant: HeaderVariant;
     title?: string;
     subtitle?: string;
-    onBack?: () => void;
+    location: string;
     onSettings: () => void;
     children?: React.ReactNode;
     learnedOpenings?: number;
 };
 
-export default function Header({ onSettings, learnedOpenings = 0, variant, subtitle, title, }: AppHeaderProps) {
+export default function Header({ onSettings, learnedOpenings = 0, variant, subtitle, title, location }: AppHeaderProps) {
 
     const percent = (learnedOpenings / openings.length) * 100;
     const illegalPlayer = useAudioPlayer(SOUNDS.illegal);
+
+    
+
 
     if (variant === 1) {
         return (
@@ -68,9 +72,10 @@ export default function Header({ onSettings, learnedOpenings = 0, variant, subti
                     </View>
 
                     <Pressable style={h1.headerIcon}
- 
+
+                        onPressIn={() => playSound(illegalPlayer)}
                         onPress={() => {
-                             playSound(illegalPlayer)
+                            playSound(illegalPlayer)
                             onSettings()
                         }}>
                         <Ionicons name="settings" size={25} color="#EDE7DA" />
@@ -83,8 +88,23 @@ export default function Header({ onSettings, learnedOpenings = 0, variant, subti
     if (variant === 2) {
         return (
             <LinearGradient colors={[COLORS.header.dark, COLORS.header.dark2]} style={h2.header}>
-                <Text style={h2.level}>LEVEL</Text>
-                <Text style={h2.rank}>{subtitle}</Text>
+                <Pressable style={h1.headerButton} onPress={() => {
+                    playSound(illegalPlayer)   
+                    clearMatchState()                 
+                    router.replace(location)
+                }}>
+                    <Ionicons name="chevron-back" size={28} color="#fff" />
+                </Pressable>
+                <View style={{ flex: 1, alignItems: "center" }} >
+                    <Text style={h2.level}>LEVEL</Text>
+                    <Text style={h2.rank}>{title}</Text>
+                </View>
+                <Pressable onPress={() => {
+                    onSettings()
+                }}
+                    onPressIn={() => playSound(illegalPlayer)} style={h1.headerButton}>
+                    <Ionicons name="settings" size={24} color="#fff" />
+                </Pressable>
             </LinearGradient>
 
         );
@@ -92,7 +112,10 @@ export default function Header({ onSettings, learnedOpenings = 0, variant, subti
     if (variant === 3) {
         return (
             <LinearGradient colors={[COLORS.homepage.dark, COLORS.homepage.dark2]} style={h3.header}>
-                <Pressable onPressIn={() => playSound(illegalPlayer)} style={h1.headerButton} onPress={() => router.replace("/")}>
+                <Pressable style={h1.headerButton} onPress={() => {
+                    playSound(illegalPlayer)
+                    router.replace(location)
+                }}>
                     <Ionicons name="chevron-back" size={28} color="#fff" />
                 </Pressable>
 
@@ -262,11 +285,13 @@ const h2 = StyleSheet.create({
 
     header: {
         height: 150,
+        paddingHorizontal: 18,
         justifyContent: "center",
         alignItems: "center",
         borderBottomWidth: 3,
         borderBottomColor: COLORS.board.border,
         backgroundColor: COLORS.background,
+        flexDirection: "row",
     },
     level: {
         color: COLORS.text.muted,

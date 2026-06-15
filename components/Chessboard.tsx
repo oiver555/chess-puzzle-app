@@ -130,13 +130,13 @@ export default function ChessBoard({
 
 
   const pieceSize = boardSize / 8;
-const computerColor = playerColor === "w" ? "b" : "w";
+  const computerColor = playerColor === "w" ? "b" : "w";
 
-const lastMovedPiece = lastMove
+  const lastMovedPiece = lastMove
     ? getPieceAtSquare(lastMove.to)
     : null;
 
-const wasComputerMove =
+  const wasComputerMove =
     lastMovedPiece?.color === computerColor;
 
   return (
@@ -155,7 +155,7 @@ const wasComputerMove =
         const isDark = (row + col) % 2 === 1;
 
         const isIllegalSquare = illegalSquare === squareName;
-          
+
 
         const isLastMoveFrom =
           wasComputerMove && lastMove?.from === squareName;
