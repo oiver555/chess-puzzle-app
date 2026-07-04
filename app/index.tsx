@@ -55,7 +55,7 @@ export default function App() {
         <View style={styles.screen}>
             <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
 
-            <Header location="" title="CHESSMASTER" subtitle="OPENING SCHOLAR" variant={1} onSettings={() => setShowSettings(true)} learnedOpenings={learnedOpenings} />
+            <Header onBack={() => {}} title="CHESSMASTER" subtitle="OPENING SCHOLAR" variant={1} onSettings={() => setShowSettings(true)} learnedOpenings={learnedOpenings} />
 
             <ScrollView
                 style={styles.content}

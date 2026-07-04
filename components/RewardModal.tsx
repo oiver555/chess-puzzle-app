@@ -23,34 +23,34 @@ export default function RewardModal({ visible, onClose }: RewardModalProps) {
 
     const dropAnim = useRef(new Animated.Value(-500)).current;
 
-   const [showModal, setShowModal] = useState(false);
+    const [showModal, setShowModal] = useState(false);
 
-useEffect(() => {
-  if (visible) {
-    setShowModal(true);
+    useEffect(() => {
+        if (visible) {
+            setShowModal(true);
 
-    dropAnim.setValue(-1000);
+            dropAnim.setValue(-1000);
 
-    Animated.spring(dropAnim, {
-      toValue: 0,
-      useNativeDriver: true,
-    }).start();
-  } else {
-    Animated.timing(dropAnim, {
-      toValue: 1000,
-      duration: 250,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowModal(false);
-    });
-  }
-}, [visible]);
+            Animated.spring(dropAnim, {
+                toValue: 0,
+                useNativeDriver: true,
+            }).start();
+        } else {
+            Animated.timing(dropAnim, {
+                toValue: 1000,
+                duration: 250,
+                useNativeDriver: true,
+            }).start(() => {
+                setShowModal(false);
+            });
+        }
+    }, [visible]);
 
 
     return (
         <Modal transparent visible={showModal} animationType="none">
             <View style={styles.overlay}>
-                <ConfettiLayer active={visible}  />
+                <ConfettiLayer active={visible} />
 
                 <Animated.View style={[
                     styles.card,

@@ -4,14 +4,12 @@ import ChessBoard from "@/components/Chessboard";
 import PromotionModal from "@/components/PromotionModal";
 import { COLORS } from "@/theme/colors";
 import { LastMove } from "@/types/match";
-import { clearMatchState, loadMatchState, saveAppState, saveMatchState } from "@/util/storage";
+import { clearMatchState, saveMatchState } from "@/util/storage";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useStockfish } from "@loloof64/react-native-stockfish";
 import { Square } from "chess.js";
 import { useAudioPlayer } from "expo-audio";
-import { LinearGradient } from "expo-linear-gradient";
-import { router, useLocalSearchParams, usePathname } from "expo-router";
-import React, { useCallback, useEffect } from "react";
+import { router, useLocalSearchParams, } from "expo-router";
+import React, { useEffect } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import {
     game,
@@ -28,6 +26,9 @@ import WinModal from "@/components/YouWonModal";
 import { playSound } from "@/util/chessUtils";
 import Header from "@/components/Header";
 import { SettingsModal } from "@/components/SettingsModal";
+import { useStockfishContext } from "../providers/StockfishProvider";
+import EvalBar from "@/components/EvalBar";
+import ClaimHintModal from "@/components/ClaimHintModal";
 
 const Match = () => {
     const { side, difficulty } = useLocalSearchParams<{ side?: "w" | "b" | "r"; difficulty?: string; }>();
@@ -45,18 +46,31 @@ const Match = () => {
     const [evalScore, setEvalScore] = React.useState<number>(0);
     const [legalMoves, setLegalMoves] = React.useState<Square[]>([]);
     const [illegalSquare, setIllegalSquare] = React.useState<Square | null>(null);
-    const [refresh, setRefresh] = React.useState<number>(0);
     const [showExitModal, setShowExitModal] = React.useState<boolean>(false);
     const [isCheckmate, setIsCheckmate] = React.useState<boolean>(false);
     const [squareInCheck, setSquareInCheck] = React.useState<Square | "">("");
-    const playerColorRef = React.useRef<"w" | "b">(side === "r" ? (Math.random() < 0.5 ? "w" : "b") : (side === "w" ? "w" : "b"));
-    const aiSideRef = React.useRef<"w" | "b">(playerColorRef.current === "w" ? "b" : "w");
+    const [playerColor] = React.useState<"w" | "b">(() => {
+        if (side === "r") {
+            return Math.random() < 0.5 ? "w" : "b"
+        }
+        else if (side === "w") { return "w" }
+        else return "b"
+    })
+    const { sendCommandToStockfish, setOutputHandler } = useStockfishContext();
+    const aiSideRef = React.useRef<"w" | "b">(playerColor === "w" ? "b" : "w");
     const [promotionMove, setPromotionMove] = React.useState<{
         from: Square;
         to: Square;
     } | null>(null);
-    const [showWinModal, setShowWinModal] = React.useState(true);
+    const [showWinModal, setShowWinModal] = React.useState(false);
+    const [showClaimModal, setShowClaimModal] = React.useState(false);
     const [showSettings, setShowSettings] = React.useState(false);
+    const [, setFen] = React.useState(game.fen());
+    const engineRequestRef = React.useRef<"aiMove" | "hint" | null>(null);
+    const [hintMove, setHintMove] = React.useState<{ from: Square; to: Square } | null>(null);
+    const [hintsLeft, setHintsLeft] = React.useState(3);
+
+
 
     const handlePromotion = (promotion: "q" | "r" | "b" | "n") => {
         if (!promotionMove) return;
@@ -70,7 +84,7 @@ const Match = () => {
         movePiece(promotionMove.from, promotionMove.to, promotion);
         saveMatchState({
             fen: getFen(),
-            playerColor: playerColorRef.current,
+            playerColor,
             aiColor: aiSideRef.current,
             lastMove: {
                 from,
@@ -85,8 +99,7 @@ const Match = () => {
         setPromotionMove(null);
         setSelectedSquare(null);
         setLegalMoves([]);
-        setRefresh((prev) => prev + 1);
-
+        setFen(game.fen());
         const status = checkGameStatus();
 
         if (status === "checkmate" || status === "stalemate" || status === "draw") {
@@ -121,7 +134,20 @@ const Match = () => {
         setSquareInCheck("");
     };
 
+    const getHint = () => {
+        if (hintsLeft <= 0) return;
+        if (game.turn() !== playerColor) return;
+
+        engineRequestRef.current = "hint";
+
+        sendCommandToStockfish(`position fen ${getFen()}`);
+        sendCommandToStockfish("go movetime 1000 depth 1");
+
+        setHintsLeft(prev => prev - 1);
+    };
+
     const getAiMove = async () => {
+        engineRequestRef.current = "aiMove";
         if (difficulty === "rookie") {
             playRookieMove();
             return;
@@ -168,14 +194,14 @@ const Match = () => {
         setLegalMoves([]);
         setIsCheckmate(false);
         setSquareInCheck("");
-        setRefresh((prev) => prev + 1);
+        setFen(game.fen());
     };
 
     const playMoveResultSound = (move: any, status: string) => {
         if (status === "checkmate") {
             const winner = move?.color === "w" ? "w" : "b";
 
-            if (winner === playerColorRef.current) {
+            if (winner === playerColor) {
                 playSound(movePlayer);
                 playSound(checkmatePlayer); // you won
             } else {
@@ -209,91 +235,6 @@ const Match = () => {
         playSound(movePlayer);
     };
 
-    const multiPvMovesRef = React.useRef<Map<number, string>>(new Map());
-
-    const parseMultiPvLine = (line: string) => {
-        const match = line.match(/multipv\s+(\d+).*?\spv\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
-
-        if (!match) return;
-
-        const multiPvNumber = Number(match[1]);
-        const move = match[2];
-
-        multiPvMovesRef.current.set(multiPvNumber, move);
-    };
-
-    const { stockfishLoop, sendCommandToStockfish } = useStockfish({
-        onOutput: useCallback((output: string) => {
-            const cleanOutput = output.trim();
-            if (!cleanOutput) { return }
-
-            console.log(cleanOutput);
-
-            // Capture MultiPV lines
-            if (cleanOutput.includes(" multipv ") && cleanOutput.includes(" pv ")) {
-                parseMultiPvLine(cleanOutput);
-                return;
-            }
-
-            const cpMatch = cleanOutput.match(/score cp (-?\d+)/);
-
-            if (cpMatch) {
-                const centipawns = Number(cpMatch[1]);
-                const score = centipawns / 100;
-                // console.log("Centipawns: ", score);
-                setEvalScore(score);
-            }
-
-            // When Stockfish finishes searching
-            if (cleanOutput.startsWith("bestmove")) {
-                const preferredPv = 2;
-
-                const selectedMove =
-                    multiPvMovesRef.current.get(preferredPv) ??
-                    multiPvMovesRef.current.get(1);
-
-                if (!selectedMove) {
-                    multiPvMovesRef.current.clear();
-                    return;
-                }
-
-                const from = selectedMove.slice(0, 2) as Square;
-                const to = selectedMove.slice(2, 4) as Square;
-                const promotion = selectedMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
-
-                const aiMove = moveAiPiece(from, to, promotion || undefined);
-                console.log(selectedMove);
-
-                saveMatchState({
-                    fen: getFen(),
-                    playerColor: playerColorRef.current,
-                    aiColor: aiSideRef.current,
-                    lastMove: { from, to },
-                    savedAt: new Date().toISOString(),
-                });
-
-                setLastMove({ from, to });
-
-                const status = checkGameStatus();
-
-                if (promotion) {
-                    playSound(promotionPlayer);
-                } else {
-                    playMoveResultSound(aiMove, status);
-                }
-
-                setRefresh((prev) => prev + 1);
-
-                multiPvMovesRef.current.clear();
-            }
-
-        }, []),
-
-        onError: useCallback((error: string) => {
-            console.log("Stockfish error:", error);
-        }, []),
-    });
-
     const handleSquarePress = (squareName: Square) => {
         const piece = getPieceAtSquare(squareName);
 
@@ -317,7 +258,7 @@ const Match = () => {
             movePiece(selectedSquare, squareName);
             saveMatchState({
                 fen: getFen(),
-                playerColor: playerColorRef.current,
+                playerColor: playerColor,
                 aiColor: aiSideRef.current,
                 lastMove: {
                     from: selectedSquare,
@@ -331,7 +272,8 @@ const Match = () => {
             });
             setSelectedSquare(null);
             setLegalMoves([]);
-            setRefresh((prev) => prev + 1);
+            setFen(game.fen());
+            setHintMove(null);
 
             const status = checkGameStatus();
             playMoveResultSound(selectedMove, status);
@@ -347,7 +289,7 @@ const Match = () => {
             return;
         }
 
-        if (piece && piece.color === playerColorRef.current) {
+        if (piece && piece.color === playerColor) {
             //  playSound(capturePlayer);
             setSelectedSquare(squareName);
             setLegalMoves(getLegalMoves(squareName));
@@ -384,7 +326,7 @@ const Match = () => {
             }
             saveMatchState({
                 fen: getFen(),
-                playerColor: playerColorRef.current,
+                playerColor: playerColor,
                 aiColor: aiSideRef.current,
                 lastMove: {
                     from: randomMove.from,
@@ -398,7 +340,7 @@ const Match = () => {
                 to: randomMove.to,
             });
 
-            setRefresh((prev) => prev + 1);
+            setFen(game.fen());
 
         }, 1000);
     };
@@ -409,7 +351,7 @@ const Match = () => {
         const isLegalTarget = !!selectedSquare && legalMoves.includes(squareName);
 
         const isOwnPiece =
-            piece && piece.color === playerColorRef.current;
+            piece && piece.color === playerColor;
 
         if (!isOwnPiece && !isLegalTarget) {
             setIllegalSquare(squareName);
@@ -421,86 +363,131 @@ const Match = () => {
         }
     };
 
-    const pathname = usePathname()
+    const multiPvMovesRef = React.useRef<Map<number, string>>(new Map());
+    const parseMultiPvLine = (line: string) => {
+        const match = line.match(
+            /multipv\s+(\d+).*?\spv\s+([a-h][1-8][a-h][1-8][qrbn]?)/
+        );
+
+        if (!match) return;
+
+        const multiPvNumber = Number(match[1]);
+        const move = match[2];
+
+        multiPvMovesRef.current.set(multiPvNumber, move);
+    };
 
     useEffect(() => {
-        stockfishLoop();
-        sendCommandToStockfish("uci");
-        sendCommandToStockfish("setoption name UCI_LimitStrength value false");
-        sendCommandToStockfish("setoption name UCI_Elo value 3000");
-        sendCommandToStockfish("setoption name MultiPV value 5");
-        sendCommandToStockfish("setoption name Threads value 3");
-        sendCommandToStockfish("isready");
-        sendCommandToStockfish("ucinewgame");
-        
-      
-        
-        setRefresh((prev) => prev + 1)
-        
+        setOutputHandler((output: string) => {
+            const cleanOutput = output.trim();
+            if (!cleanOutput) return;
 
-        // SAVE APP STATE
-        saveAppState({
-            lastRoute: pathname,
-            savedAt: new Date().toISOString(),
-        });
+            console.log(cleanOutput);
 
-        // RESTORE MATCH IF POSSIBLE
-        async function restoreMatch() {
-
-            const saved = await loadMatchState();
-
-            if (!saved) {
-                if (playerColorRef.current === "b") {
-                    const timer = setTimeout(() => {
-                        getAiMove();
-                    }, 2000);
-
-                    return () => clearTimeout(timer);
-
-                }
+            if (cleanOutput.includes(" multipv ") && cleanOutput.includes(" pv ")) {
+                parseMultiPvLine(cleanOutput);
                 return;
             }
 
-            game.load(saved.fen);
-            setRefresh(prev => prev + 1)
-            if (saved.lastMove) {
-                setLastMove(saved.lastMove);
+            const cpMatch = cleanOutput.match(/score cp (-?\d+)/);
+
+            if (cpMatch) {
+                const centipawns = Number(cpMatch[1]);
+                setEvalScore(centipawns / 100);
             }
 
-            if (game.turn() === aiSideRef.current) {
-                getAiMove();
-            }
-        }
+            if (cleanOutput.startsWith("bestmove")) {
+                // your current bestmove logic here
+                const preferredPv = 1;
 
-        restoreMatch();
+                const selectedMove = multiPvMovesRef.current.get(preferredPv) ??
+                    multiPvMovesRef.current.get(1);
+
+                if (!selectedMove) {
+                    multiPvMovesRef.current.clear();
+                    engineRequestRef.current = null;
+                    return;
+                }
+
+                const from = selectedMove.slice(0, 2) as Square;
+                const to = selectedMove.slice(2, 4) as Square;
+                const promotion = selectedMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
+
+
+                if (engineRequestRef.current === "hint") {
+                    console.log("hint", selectedMove);
+
+                    setHintMove({ from, to });
+
+                    multiPvMovesRef.current.clear();
+                    engineRequestRef.current = null;
+                    return;
+                }
+
+                if (engineRequestRef.current === "aiMove") {
+                    const aiMove = moveAiPiece(from, to, promotion || undefined);
+                    const status = checkGameStatus();
+
+                    playMoveResultSound(aiMove, status);
+
+                    if (!aiMove) return;
+
+                    setLastMove({ from, to });
+                    setFen(game.fen());
+
+                    if (status === "checkmate") {
+                        const winner = game.turn() === "w" ? "b" : "w";
+
+                        if (winner === playerColor) {
+                            console.log("You Win!");
+
+                        } else {
+                            console.log("You Lost!");
+
+                        }
+
+
+                        engineRequestRef.current = null;
+                        return;
+                    }
+
+                    if (status === "stalemate") {
+                        // Handle stalemate
+                        engineRequestRef.current = null;
+                        return;
+                    }
+
+                    if (status === "draw") {
+                        // Handle draw
+                        engineRequestRef.current = null;
+                        return;
+                    }
+
+
+
+
+
+                    saveMatchState({
+                        fen: getFen(),
+                        playerColor: playerColor,
+                        aiColor: aiSideRef.current,
+                        lastMove: {
+                            from,
+                            to,
+                        },
+                        savedAt: new Date().toISOString(),
+                    });
+
+                    multiPvMovesRef.current.clear();
+                    engineRequestRef.current = null;
+                }
+            }
+        });
 
         return () => {
-            setSelectedSquare(null);
-            setLegalMoves([]);
-            sendCommandToStockfish("stop");
-            resetGame();
+            setOutputHandler(null);
         };
-    }, []);
-
-    const gameOver = game.isGameOver();
-    const checkmate = game.isCheckmate();
-    const playerWon = checkmate && game.turn() === aiSideRef.current;
-    const playerLost = checkmate && game.turn() === playerColorRef.current;
-    const isDraw = gameOver && !checkmate;
-
-
-    useEffect(() => {
-        if (!playerWon) {
-            setShowWinModal(false);
-            return;
-        }
-
-        const timer = setTimeout(() => {
-            setShowWinModal(true);
-        }, 1500);
-
-        return () => clearTimeout(timer);
-    }, [playerWon]);
+    },);
 
     return (
 
@@ -535,7 +522,7 @@ const Match = () => {
                                     setSelectedSquare(null);
                                     setLegalMoves([]);
                                     setLastMove(null);
-                                    setRefresh((prev) => prev + 1);
+                                    setFen(game.fen());
 
                                     sendCommandToStockfish("stop");
                                     sendCommandToStockfish("ucinewgame");
@@ -555,7 +542,7 @@ const Match = () => {
             </Modal>
 
             <WinModal visible={showWinModal}
-                wins={1}
+                wins={4}
                 requiredWins={5}
                 onNewGame={() => {
 
@@ -575,7 +562,7 @@ const Match = () => {
                     setIsCheckmate(false);
                     setPromotionMove(null);
 
-                    setRefresh((prev) => prev + 1);
+                    setFen(game.fen());
 
                     setTimeout(() => {
                         router.replace("ComputerSettings");
@@ -584,20 +571,35 @@ const Match = () => {
                 onGameView={() => {
                     // setShowWinModal(false);
                 }}
+                onClose={() => setShowWinModal(false)}
             />
-            <PromotionModal visible={promotionMove !== null} playerColor={playerColorRef.current} onPromote={handlePromotion} />
+            <ClaimHintModal visible={showClaimModal} amount={2} onClaim={() => {}} onDismiss={() => setShowClaimModal(false)} />
+            <RewardModal visible={false} onClose={() => { }} />
+            <PromotionModal visible={promotionMove !== null} playerColor={playerColor} onPromote={handlePromotion} />
             <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
 
-            <Header location={"/ComputerSettings"} title={difficulty} variant={2} onSettings={() => setShowSettings(true)} />
+            <Header
+                onBack={() => {
+                    game.reset();
+                    setFen(game.fen());
+                    setLastMove(null);
+                    setSelectedSquare(null);
+                    setLegalMoves([]);
+                    playSound(illegalPlayer)
+                    clearMatchState()
+                    sendCommandToStockfish("stop");
+                    // stopStockfish()
+                    router.push("ComputerSettings");
+                }} title={difficulty} variant={2} onSettings={() => setShowSettings(true)} />
 
             <View style={styles.content}>
                 <View style={styles.boardWrap}>
-                    {/* <EvalBar score={evalScore} /> */}
+                    {false && <EvalBar score={evalScore} />}
                     <View style={styles.board}>
                         <ChessBoard
                             selectedSquare={selectedSquare}
                             legalMoves={legalMoves}
-                            playerColor={playerColorRef.current}
+                            playerColor={playerColor}
                             isCheckmate={isCheckmate}
                             squareInCheck={squareInCheck}
                             getPieceAtSquare={getPieceAtSquare}
@@ -605,6 +607,7 @@ const Match = () => {
                             onSquarePressIn={handleSquarePressIn}
                             lastMove={lastMove}
                             illegalSquare={illegalSquare}
+                            hintMove={hintMove}
                         />
                     </View>
                 </View>
@@ -639,9 +642,8 @@ const Match = () => {
                             setIsCheckmate(false);
                             setPromotionMove(null);
 
-                            setRefresh((prev) => prev + 1);
-
-                            if (playerColorRef.current === "b") {
+                            setFen(game.fen());
+                            if (playerColor === "b") {
                                 setTimeout(() => {
                                     getAiMove();
                                 }, 200);
@@ -678,9 +680,12 @@ const Match = () => {
                                 color={COLORS.board.border}
                             />
                         }
-                        label="HINT" onPress={() => {
+                        badgeCount={hintsLeft}
+
+                        label="HINT"
+                        onPress={() => {
                             playSound(capturePlayer);
-                            sendCommandToStockfish("d");
+                            getHint();
                         }} />
                 </View>
 

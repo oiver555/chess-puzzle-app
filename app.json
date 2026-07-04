@@ -4,7 +4,6 @@
     "slug": "chess-sandbox",
     "version": "1.0.0",
     "orientation": "portrait",
-   
     "scheme": "chessmasters",
     "updates": {
       "fallbackToCacheTimeout": 0
@@ -22,7 +21,9 @@
       },
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
       "package": "com.anonymous.chesssandbox"
     },
@@ -42,6 +43,12 @@
       "expo-router",
       "expo-splash-screen",
       "expo-status-bar"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "17a73750-f3d4-4bca-a37c-26ffbc5bd70f"
+      }
+    }
   }
 }

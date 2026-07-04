@@ -27,6 +27,10 @@ export type ChessBoardProps = {
     lastMove: LastMove;
     illegalSquare: Square | null;
     onSquarePressIn: (square: Square) => void;
+    hintMove?: {
+    from: Square;
+    to: Square;
+} | null;
 };
 
 export type SavedAppState = {

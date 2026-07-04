@@ -3,7 +3,6 @@ import { openings } from "@/data/openings";
 import { COLORS } from "@/theme/colors";
 import { playSound } from "@/util/chessUtils";
 import { SOUNDS } from "@/util/sounds";
-import { clearMatchState } from "@/util/storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useAudioPlayer } from "expo-audio";
 import { LinearGradient } from "expo-linear-gradient";
@@ -17,13 +16,13 @@ type AppHeaderProps = {
     variant: HeaderVariant;
     title?: string;
     subtitle?: string;
-    location: string;
+    onBack: () => void;
     onSettings: () => void;
     children?: React.ReactNode;
     learnedOpenings?: number;
 };
 
-export default function Header({ onSettings, learnedOpenings = 0, variant, subtitle, title, location }: AppHeaderProps) {
+export default function Header({ onSettings, learnedOpenings = 0, variant, subtitle, title, onBack }: AppHeaderProps) {
 
     const percent = (learnedOpenings / openings.length) * 100;
     const illegalPlayer = useAudioPlayer(SOUNDS.illegal);
@@ -88,11 +87,7 @@ export default function Header({ onSettings, learnedOpenings = 0, variant, subti
     if (variant === 2) {
         return (
             <LinearGradient colors={[COLORS.header.dark, COLORS.header.dark2]} style={h2.header}>
-                <Pressable style={h1.headerButton} onPress={() => {
-                    playSound(illegalPlayer)   
-                    clearMatchState()                 
-                    router.replace(location)
-                }}>
+                <Pressable style={h1.headerButton} onPress={onBack}>
                     <Ionicons name="chevron-back" size={28} color="#fff" />
                 </Pressable>
                 <View style={{ flex: 1, alignItems: "center" }} >

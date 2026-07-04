@@ -1,9 +1,10 @@
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
-import { useEffect, useRef, useState } from "react"; import { Square } from "chess.js";
+import { useEffect, useMemo,  useState } from "react"; import { Square } from "chess.js";
 import { PieceCode } from "./Piece";
 import AnimatedPiece from "./AnimatedPiece";
 import { COLORS } from "../theme/colors";
 import { ChessBoardProps } from "@/types/match";
+import HintArrow from "./HintArrow";
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export default function ChessBoard({
@@ -15,7 +16,8 @@ export default function ChessBoard({
   onSquarePress,
   lastMove,
   illegalSquare,
-  onSquarePressIn
+  onSquarePressIn,
+  hintMove,
 }: ChessBoardProps) {
   const [boardSize, setBoardSize] = useState(0);
 
@@ -52,44 +54,44 @@ export default function ChessBoard({
     };
   };
 
-  const checkFlash = useRef(new Animated.Value(0)).current;
+  const checkFlashAnim = useMemo(() => new Animated.Value(0), []);
 
   useEffect(() => {
     if (!squareInCheck) {
-      checkFlash.setValue(0);
+      checkFlashAnim.setValue(0);
       return;
     }
 
-    checkFlash.setValue(0);
+    checkFlashAnim.setValue(0);
 
     Animated.sequence([
-      Animated.timing(checkFlash, {
+      Animated.timing(checkFlashAnim, {
         toValue: 1,
         duration: 120,
         useNativeDriver: false,
       }),
-      Animated.timing(checkFlash, {
+      Animated.timing(checkFlashAnim, {
         toValue: 0,
         duration: 120,
         useNativeDriver: false,
       }),
-      Animated.timing(checkFlash, {
+      Animated.timing(checkFlashAnim, {
         toValue: 1,
         duration: 120,
         useNativeDriver: false,
       }),
-      Animated.timing(checkFlash, {
+      Animated.timing(checkFlashAnim, {
         toValue: 0,
         duration: 120,
         useNativeDriver: false,
       }),
-      Animated.timing(checkFlash, {
+      Animated.timing(checkFlashAnim, {
         toValue: 1,
         duration: 180,
         useNativeDriver: false,
       }),
     ]).start();
-  }, [squareInCheck]);
+  }, [squareInCheck, checkFlashAnim]);
 
   const squares = Array.from({ length: 64 });
 
@@ -145,6 +147,8 @@ export default function ChessBoard({
         setBoardSize(event.nativeEvent.layout.width);
       }}
     >
+
+
       {squares.map((_, i) => {
         const squareName = indexToSquare(i);
         const isSelected = selectedSquare === squareName;
@@ -164,7 +168,7 @@ export default function ChessBoard({
           wasComputerMove && lastMove?.to === squareName;
 
 
-        const checkedBackground = checkFlash.interpolate({
+        const checkedBackground = checkFlashAnim.interpolate({
           inputRange: [0, 1],
           outputRange: [
             isDark ? COLORS.board.darkSquare : COLORS.board.lightSquare,
@@ -215,6 +219,9 @@ export default function ChessBoard({
         );
       })}
 
+
+    
+      
       {boardSize > 0 && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           {pieces.map((piece, index) => (
@@ -227,6 +234,15 @@ export default function ChessBoard({
             />
           ))}
         </View>
+      )}
+
+        {hintMove && (
+        <HintArrow
+          boardSize={boardSize}
+          from={hintMove.from}
+          to={hintMove.to}
+          playerColor={playerColor}
+        />
       )}
     </View>
   );

@@ -81,12 +81,11 @@ export default function ComputerSettings() {
   })
 
 
-
   return (
     <View style={styles.screen}>
       <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
 
-      <Header location="\" onSettings={() => setShowSettings(true)} variant={3} title="PLAY VS COMPUTER" />
+      <Header onBack={() => router.back()} onSettings={() => setShowSettings(true)} variant={3} title="PLAY VS COMPUTER" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}

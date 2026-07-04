@@ -10,12 +10,10 @@ export async function saveMatchState(state: SavedMatchState) {
     await AsyncStorage.setItem(STORAGE_KEYS.MATCH_STORAGE_KEY, JSON.stringify(state));
 }
 
+
 export async function loadMatchState(): Promise<SavedMatchState | null> {
     const data = await AsyncStorage.getItem(STORAGE_KEYS.MATCH_STORAGE_KEY);
-    console.log(data);
-
     if (!data) return null;
-
     return JSON.parse(data);
 }
 
