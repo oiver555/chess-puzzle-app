@@ -24,13 +24,24 @@ export const getPieceAtSquare = (square: string) => {
 };
 
 export const resetGame = () => {
-   console.log("Resetting Chess.js");
   game.reset();
 };
 
 export const getFen = () => {
   return game.fen();
 };
+export const getPGN = () => {
+  return game.pgn();
+};
+
+export const loadPGN = (pgn: string) => {
+  game.loadPgn(pgn);
+};
+
+export const loadFEN = (fen: string) => {
+  game.load(fen);
+};
+
 export const getCurrentBoard = () => {
   return game.board();
 };

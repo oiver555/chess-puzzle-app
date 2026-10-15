@@ -16,6 +16,7 @@ import { SettingsModal } from "@/components/SettingsModal";
 import { playSound } from "@/util/chessUtils";
 import { useAudioPlayer } from "expo-audio";
 import { SOUNDS } from "@/util/sounds";
+import { Difficulty } from "@/types/match";
 
 const { width, height } = Dimensions.get("window");
 
@@ -31,7 +32,6 @@ const COLORS = {
   text: "#07352D",
   muted: "#385A52",
 };
-type Difficulty = "rookie" | "skilled" | "advanced" | "master";
 
 const difficulties: {
   title: Difficulty;

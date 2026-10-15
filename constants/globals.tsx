@@ -7,3 +7,4 @@ export const deviceWidth = width;
 export const deviceHeight = height;
 export const isSmallPhone = deviceHeight < 700;
 export const isNarrowPhone = deviceWidth < 380;
+export const requiredNumOfWins = 5

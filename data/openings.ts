@@ -108,42 +108,42 @@ export const openings: Opening[] = [
 
         moveDetails: [
             {
-                order: "1.",
+                order: "1W",
                 move: "d4",
                 side: "white",
                 piece: "♙",
                 text: "White claims central space and prepares to build a strong pawn center.",
             },
             {
-                order: "1...",
+                order: "1B",
                 move: "Nf6",
                 side: "black",
                 piece: "♞",
                 text: "Black develops a knight and begins a flexible Indian Defense setup.",
             },
             {
-                order: "2.",
+                order: "2W",
                 move: "c4",
                 side: "white",
                 piece: "♙",
                 text: "White strengthens central control and prepares queenside development.",
             },
             {
-                order: "2...",
+                order: "2B",
                 move: "g6",
                 side: "black",
                 piece: "♟",
                 text: "Black prepares to fianchetto the bishop and pressure the center.",
             },
             {
-                order: "3.",
+                order: "3W",
                 move: "Nc3",
                 side: "white",
                 piece: "♘",
                 text: "White reinforces the center and supports a future e4 advance.",
             },
             {
-                order: "3...",
+                order: "3B",
                 move: "d5",
                 side: "black",
                 piece: "♟",

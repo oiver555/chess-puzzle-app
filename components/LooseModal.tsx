@@ -1,13 +1,6 @@
-import React, { useEffect } from "react";
-import {
-  Modal,
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-} from "react-native";
+import { useEffect } from "react";
+import { Modal, View, Text, StyleSheet, } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import GameButton from "./GameButton";
 import Animated, {
   useSharedValue,
@@ -17,24 +10,18 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-type WinModalProps = {
+type LooseModalProps = {
   visible: boolean;
-  wins: number;
-  requiredWins?: number;
   onNewGame: () => void;
   onGameView: () => void;
-  onClose?: () => void;
 };
 
-export default function WinModal({
+export default function LooseModal({
   visible,
-  wins,
-  requiredWins = 5,
   onNewGame,
   onGameView,
-  onClose,
-}: WinModalProps) {
-  const progressPercent = Math.min(wins / requiredWins, 1) * 100;
+
+}: LooseModalProps) {
   const chestScale = useSharedValue(1);
   const chestRotate = useSharedValue(0);
   const chestY = useSharedValue(0);
@@ -76,13 +63,7 @@ export default function WinModal({
     );
   }, []);
 
-  const chestAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: chestY.value },
-      { scale: chestScale.value },
-      { rotate: `${chestRotate.value}deg` },
-    ],
-  }));
+
 
   const modalY = useSharedValue(-600);
   const modalScale = useSharedValue(0.9);
@@ -114,76 +95,19 @@ export default function WinModal({
 
   return (
     <Animated.View style={modalAnimatedStyle}>
-      <Modal visible={visible} transparent animationType="fade">
+      <Modal visible={visible} transparent animationType="slide">
         <View style={styles.overlay}>
           <LinearGradient
             colors={["#075247", "#043B34", "#022A25"]}
             style={styles.modal}
           >
-            {onClose && (
-              <Pressable style={styles.closeButton} onPress={onClose}>
-                <Ionicons name="close" size={28} color="#E3BE6A" />
-              </Pressable>
-            )}
-
-
-
             <View style={styles.titleWrap}>
-              <Text style={styles.title}>YOU WON!</Text>
+              <Text style={styles.title}>YOU LOST!</Text>
             </View>
             <Text style={styles.subtitle}>
-              Great strategy! You defeated the opponent.
+              Try Again
             </Text>
 
-            <View style={styles.progressBox}>
-              <Text style={styles.progressTitle}>
-                WON GAME {wins}/{requiredWins}
-              </Text>
-
-              <View style={styles.progressArea}>
-                <View style={styles.track}>
-                  <View
-                    style={[
-                      styles.trackFill,
-                      { width: `${progressPercent}%` },
-                    ]}
-                  />
-                </View>
-
-                <View style={styles.steps}>
-                  {Array.from({ length: requiredWins }).map((_, index) => {
-                    const stepNumber = index + 1;
-                    const active = stepNumber <= wins;
-                    const isPrize = stepNumber === requiredWins;
-
-                    return (
-                      <View
-                        key={stepNumber}
-                        style={[
-                          isPrize ? styles.prizeDot : styles.stepDot,
-                          active && !isPrize && styles.stepDotActive,
-                          active && isPrize && styles.prizeDotActive,
-                        ]}
-                      >
-                        {isPrize && (
-                          <Animated.View style={chestAnimatedStyle}>
-                            <MaterialCommunityIcons
-                              name="treasure-chest"
-                              size={28}
-                              color="#E3BE6A"
-                            />
-                          </Animated.View>
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-
-              <Text style={styles.prizeText}>
-                Keep winning to claim a prize!
-              </Text>
-            </View>
 
             <GameButton
               label="NEW GAME"
@@ -247,19 +171,7 @@ const styles = StyleSheet.create({
     elevation: 18,
   },
 
-  closeButton: {
-    position: "absolute",
-    right: 18,
-    top: 18,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 2,
-    borderColor: "#D8B765",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 10,
-  },
+
 
   kingCircle: {
     width: 135,

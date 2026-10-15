@@ -1,4 +1,4 @@
-import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Chess, Square } from "chess.js";
@@ -31,27 +31,15 @@ export default function OpeningPractice() {
     const playerColor = openingData.side === "black" ? "b" : "w";
     const [showReward, setShowReward] = useState(false);
     const [game, setGame] = useState(new Chess());
-    const [moveIndex, setMoveIndex] = useState(0);
-    const [message, setMessage] = useState(
-        `Practice the ${openingData.name}`
-    );
+    const [moveIndex, setMoveIndex] = useState(openingData.side === "black" ? 1 : 0);
+
     const [lastMove, setLastMove] = useState<LastMove>(null);
     const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
     const [legalMoves, setLegalMoves] = useState<Square[]>([]);
-    const [completedReps, setCompletedReps] = useState(0);
     const [masteryPercent, setMasteryPercent] = useState(Number(initialMasteryPercent ?? 0));
 
     const currentMove = openingData.moves[moveIndex];
 
-    function completeOpeningPractice(progress: OpeningProgress) {
-        const completedReps = Math.min(progress.completedReps + 1, REQUIRED_RUNS);
-
-        return {
-            ...progress,
-            completedReps,
-            mastered: completedReps >= REQUIRED_RUNS,
-        };
-    }
     const handleSquarePress = (squareName: Square) => {
         const piece = game.get(squareName);
 
@@ -87,16 +75,7 @@ export default function OpeningPractice() {
             promotion: "q",
         });
 
-        if (!move) {
-            setMessage("Illegal move.");
-            return;
-        }
 
-        // Check against expected opening move
-        if (move.san !== currentMove) {
-            setMessage(`That's not the move. Try ${currentMove}.`);
-            return;
-        }
 
         const updatedGame = new Chess(game.fen());
 
@@ -114,7 +93,6 @@ export default function OpeningPractice() {
         // Scripted computer response
         if (openingData.moves[nextIndex]) {
 
-            setMessage("Correct!");
 
             setTimeout(() => {
                 const aiGame = new Chess(updatedGame.fen());
@@ -137,16 +115,6 @@ export default function OpeningPractice() {
         } else {
             setMoveIndex(nextIndex);
             saveOpeningProgress();
-            setCompletedReps((prev) => {
-                const next = Math.min(prev + 1, REQUIRED_RUNS);
-
-                if (next >= REQUIRED_RUNS) {
-                    setShowReward(true);
-                }
-
-                return next;
-            });
-            setMessage("Opening complete!");
         }
 
         setGame(updatedGame);
@@ -162,11 +130,9 @@ export default function OpeningPractice() {
 
             setMoveIndex(1);
 
-            setMessage(`Practice the ${openingData.name} as Black`);
         } else {
             setMoveIndex(0);
 
-            setMessage(`Practice the ${openingData.name}`);
         }
 
         setGame(resetGame);
@@ -236,22 +202,18 @@ export default function OpeningPractice() {
         );
 
         setMasteryPercent(nextMastery);
+
+        if (masteryPercent !== 100 && nextMastery === 100) {
+            setShowReward(true)
+        }
     }
-    console.log(masteryPercent);
+
 
     useEffect(() => {
         if (openingData.side === "black") {
-            const initialGame = new Chess();
-
             // White makes the first move
-            initialGame.move(openingData.moves[0]);
+            game.move(openingData.moves[0]);
 
-            setGame(initialGame);
-
-            // User now responds as Black
-            setMoveIndex(1);
-
-            setMessage(`Practice the ${openingData.name} as Black`);
         }
 
     }, []);
@@ -313,7 +275,7 @@ export default function OpeningPractice() {
                             <MasteryCircle percent={masteryPercent} color={openingData.color} />
                         </View>
                         <Text style={[styles.progressText, { color: openingData.color }]}>
-                            Keep practicing!
+                            {masteryPercent === 100 ? "Opening Learned" : "Keep Practicing!"}
                         </Text>
                     </View>
                 </View>
@@ -325,10 +287,10 @@ export default function OpeningPractice() {
                     isCheckmate={false}
                     squareInCheck=""
                     getPieceAtSquare={(square) => game.get(square)}
-                    onSquarePress={handleSquarePress}
+                    onSquarePressIn={handleSquarePress}
                     lastMove={lastMove}
                     illegalSquare={null}
-                    onSquarePressIn={() => { }}
+
                 />
 
                 <View style={styles.controls}>

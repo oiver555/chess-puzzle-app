@@ -3,16 +3,13 @@ import {
     View,
     Text,
     StyleSheet,
-    ScrollView,
     Pressable,
     TextInput,
     FlatList,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import Header from "@/components/Header";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getEcoCategory } from "@/util/chessUtils";
 import { COLORS } from "@/theme/colors";
 import AdBanner from "@/components/AdBanner";
 import { LinearGradient } from "expo-linear-gradient";

@@ -65,14 +65,14 @@ export default function RewardModal({ visible, onClose }: RewardModalProps) {
 
                     <Text style={styles.trophy}>🏆</Text>
 
-                    <Text style={styles.title}>OPENING COMPLETE!</Text>
+                    <Text style={styles.title}>OPENING COMPLETE</Text>
                     <Text style={styles.subtitle}>
-                        Great job! You’ve mastered this opening.
+                       You’ve mastered this opening!
                     </Text>
 
                     <View style={styles.dividerRow}>
                         <View style={styles.line} />
-                        <Text style={styles.earned}>YOU EARNED</Text>
+                        <Text style={styles.earned}>YOU EARNED 3 HINTS!</Text>
                         <View style={styles.line} />
                     </View>
 

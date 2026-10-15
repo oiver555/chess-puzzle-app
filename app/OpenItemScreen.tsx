@@ -1,5 +1,3 @@
-import { Footer } from "@/components/Footer";
-import Header from "@/components/Header";
 import React from "react";
 import {
     View,
@@ -30,8 +28,6 @@ import BP from "../assets/pieces/svg/bP.svg";
 import MasteryCircle from "@/components/MasteryCircle";
 import AdBanner from "@/components/AdBanner";
 import { Opening, OpeningProgress } from "@/data/openings";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { STORAGE_KEYS } from "@/constants/storage";
 import { getOpeningProgress } from "@/util/storage";
 
 const { width } = Dimensions.get("window");
@@ -237,7 +233,7 @@ export default function OpeningDetailScreen() {
                 </View>
 
                 <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>ABOUT THIS OPENING</Text>
+                    <Text style={styles.sectionTitle}>ABOUT</Text>
 
                     <Text style={styles.bodyText}>
                         {openingData.commentary}
@@ -249,7 +245,7 @@ export default function OpeningDetailScreen() {
                         <View style={styles.progressBox}>
                             <Text style={[styles.progressTitle, { color: openingData.color, }]}>MASTERY</Text>
                             <MasteryCircle percent={masteryPercent} color={openingData.color} />
-                            <Text style={[styles.progressText, { color: openingData.color, }]}>Keep practicing!</Text>
+                            <Text style={[styles.progressText, { color: openingData.color, }]}> {masteryPercent === 100 ? "Opening Learned!"  : "Keep Practicing!"}  </Text>
                         </View>
                     </View>
                 </View>
@@ -655,6 +651,7 @@ const styles = StyleSheet.create({
         fontSize: 24,
         fontWeight: "900",
         marginBottom: 18,
+        textAlign:"center"
     },
 
     movesBox: {

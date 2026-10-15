@@ -1,6 +1,7 @@
 import { isNarrowPhone, isSmallPhone } from "@/constants/globals";
 import { openings } from "@/data/openings";
 import { COLORS } from "@/theme/colors";
+import { Difficulty } from "@/types/match";
 import { playSound } from "@/util/chessUtils";
 import { SOUNDS } from "@/util/sounds";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,7 +15,7 @@ type HeaderVariant = 1 | 2 | 3;
 
 type AppHeaderProps = {
     variant: HeaderVariant;
-    title?: string;
+    title?: Difficulty | null | string;
     subtitle?: string;
     onBack: () => void;
     onSettings: () => void;
@@ -26,7 +27,7 @@ export default function Header({ onSettings, learnedOpenings = 0, variant, subti
 
     const percent = (learnedOpenings / openings.length) * 100;
     const illegalPlayer = useAudioPlayer(SOUNDS.illegal);
-
+ 
     
 
 
@@ -106,7 +107,7 @@ export default function Header({ onSettings, learnedOpenings = 0, variant, subti
     }
     if (variant === 3) {
         return (
-            <LinearGradient colors={[COLORS.homepage.dark, COLORS.homepage.dark2]} style={h3.header}>
+            <LinearGradient colors={[COLORS.homepage.dark, COLORS.homepage.dark2]} style={h1.header}>
                 <Pressable style={h1.headerButton} onPress={() => {
                     playSound(illegalPlayer)
                     router.replace(location)

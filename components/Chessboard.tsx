@@ -13,7 +13,7 @@ export default function ChessBoard({
   playerColor,
   squareInCheck,
   getPieceAtSquare,
-  onSquarePress,
+ 
   lastMove,
   illegalSquare,
   onSquarePressIn,
@@ -134,7 +134,7 @@ export default function ChessBoard({
   const pieceSize = boardSize / 8;
   const computerColor = playerColor === "w" ? "b" : "w";
 
-  const lastMovedPiece = lastMove
+  const lastMovedPiece = lastMove && lastMove.to
     ? getPieceAtSquare(lastMove.to)
     : null;
 
@@ -193,7 +193,7 @@ export default function ChessBoard({
                   : COLORS.board.lightSquare,
               },
             ]}
-            onPress={() => onSquarePress(squareName)}
+            // onPress={() => onSquarePress(squareName)}
             onPressIn={() => onSquarePressIn(squareName)}
           >
             {isLegalMove && <View style={styles.legalMoveDot} />}

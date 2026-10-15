@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "chessmasters",
+    
     "updates": {
       "fallbackToCacheTimeout": 0
     },
@@ -15,6 +16,7 @@
       "supportsTablet": true
     },
     "android": {
+      
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/splash-icon.png",
         "backgroundColor": "#FFFFFF"
@@ -41,7 +43,14 @@
       "expo-font",
       "expo-image",
       "expo-router",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "backgroundColor": "#FFFFFF",
+          "imageWidth": 200
+        }
+      ],
       "expo-status-bar"
     ],
     "extra": {

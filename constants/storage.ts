@@ -5,5 +5,7 @@ export const STORAGE_KEYS = {
     SETTINGS: "settings",
     REMOVE_ADS: "remove-ads",
     MATCH_STORAGE_KEY: "current_match",
+    WINS: "win_count",
+    HINTS: "hint_count",
     APP_STATE_KEY: "app_state"
 } as const;
