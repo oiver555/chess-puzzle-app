@@ -62,7 +62,11 @@ const Match = () => {
         else if (side === "w") { return "w" }
         else return "b"
     })
-    const { sendCommandToStockfish, setOutputHandler } = useStockfishContext();
+    const { sendCommandToStockfish, setOutputHandler, isEngineReady } = useStockfishContext();
+    const [matchInitialization, setMatchInitialization] = React.useState<number | null>(null);
+    const initialTurnCheckedRef = React.useRef<number | null>(null);
+    const isMatchReady = matchInitialization !== null;
+    const isOpponentReady = selectedDifficulty === "rookie" || isEngineReady;
     const aiSideRef = React.useRef<"w" | "b">(playerColor === "w" ? "b" : "w");
     const [promotionMove, setPromotionMove] = React.useState<{
         from: Square;
@@ -146,6 +150,7 @@ const Match = () => {
     };
 
     const getHint = () => {
+        if (!isMatchReady || !isEngineReady || game.isGameOver()) return;
         if (hintsLeft <= 0) return;
         if (game.turn() !== playerColor) return;
 
@@ -157,15 +162,14 @@ const Match = () => {
     };
 
     const getAiMove = async () => {
+        if (!isMatchReady || !isOpponentReady) return;
+        if (game.isGameOver() || game.turn() !== aiSideRef.current) return;
 
-        if (game.isGameOver() === false) {
-            setTimeout(() => {
-                setIsAiThinking(true);
-
-            }, 200);
-        }
+        setTimeout(() => {
+            setIsAiThinking(true);
+        }, 200);
         engineRequestRef.current = "aiMove";
-        if (difficulty === "rookie") {
+        if (selectedDifficulty === "rookie") {
 
             setTimeout(() => {
                 playRookieMove();
@@ -294,7 +298,7 @@ const Match = () => {
         playSound(movePlayer);
     };
 
-   
+
 
     const playRookieMove = () => {
         const moves = game.moves({ verbose: true });
@@ -357,6 +361,7 @@ const Match = () => {
     };
 
     const handleSquarePressIn = (squareName: Square) => {
+        if (!isMatchReady || !isOpponentReady) return;
         const piece = getPieceAtSquare(squareName);
         const isLegalTarget = !!selectedSquare && legalMoves.includes(squareName);
         const isOwnPiece = piece && piece.color === playerColor;
@@ -441,13 +446,8 @@ const Match = () => {
         multiPvMovesRef.current.set(multiPvNumber, move);
     };
 
+    // Refresh the handler after each render so restored colors and difficulty are used.
     useEffect(() => {
-
-        setTimeout(() => {
-            setFen(game.fen());
-            setShowClaimModal(true);
-        }, 1000);
-
         setOutputHandler((output: string) => {
             const cleanOutput = output.trim();
             if (!cleanOutput) return;
@@ -560,9 +560,21 @@ const Match = () => {
             }
         });
 
+        return () => {
+            setOutputHandler(null);
+        };
+    });
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const claimTimer = setTimeout(() => {
+            setShowClaimModal(true);
+        }, 1000);
+
         loadMatchState().then((savedState) => {
+            if (cancelled) return;
             if (savedState) {
-                // SplashScreen.hideAsync();
                 // console.log(JSON.stringify(savedState, null, 2));
                 loadFEN(savedState.fen);
                 loadPGN(savedState.pgn);
@@ -571,7 +583,10 @@ const Match = () => {
                 aiSideRef.current = savedState.aiColor;
                 setSelectedDifficulty(savedState.difficulty);
                 setSelectedSquare(savedState.selectedSquare)
+                console.log(game.isCheckmate())
+
             } else {
+                resetGame();
                 saveMatchState({
                     fen: getFen(),
                     playerColor,
@@ -589,6 +604,20 @@ const Match = () => {
                 console.log("No Saved Data");
 
             }
+            setFen(game.fen());
+            setMatchInitialization(0);
+
+
+            if (game.isCheckmate()) {
+                const winner = game.turn() === 'w' ? 'b' : 'w';
+
+                if (winner === playerColor) {
+                    setShowWinModal(true)
+
+                }
+            }
+        }).catch((error) => {
+            console.log("Could not initialize match:", error);
         });
 
 
@@ -600,11 +629,25 @@ const Match = () => {
             if (hints) setHintsLeft(hints)
         })
 
+
+
+
+
+
         return () => {
-            setOutputHandler(null);
+            cancelled = true;
+            clearTimeout(claimTimer);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Check once per initialization/restart, after the position and opponent are ready.
+    useEffect(() => {
+        if (!isMatchReady || !isOpponentReady || initialTurnCheckedRef.current === matchInitialization) return;
+
+        initialTurnCheckedRef.current = matchInitialization;
+        getAiMove();
+    });
 
     useEffect(() => {
         const subscription = checkmatePlayer.addListener(
@@ -817,16 +860,13 @@ const Match = () => {
                         }
                         label="RESTART"
                         onPress={() => {
+                            if (!isMatchReady) return;
                             playSound(capturePlayer);
-
                             clearMatchState();
-
                             sendCommandToStockfish("stop");
                             sendCommandToStockfish("ucinewgame");
                             sendCommandToStockfish("position startpos");
-
                             resetGame();
-
                             setSelectedSquare(null);
                             setLegalMoves([]);
                             setLastMove(null);
@@ -836,11 +876,7 @@ const Match = () => {
                             setPromotionMove(null);
 
                             setFen(game.fen());
-                            if (playerColor === "b") {
-                                setTimeout(() => {
-                                    getAiMove();
-                                }, 200);
-                            }
+                            setMatchInitialization(previous => (previous ?? 0) + 1);
                         }} />
                     <ActionButton
                         icon={
