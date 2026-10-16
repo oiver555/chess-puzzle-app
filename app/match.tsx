@@ -8,9 +8,9 @@ import { clearMatchState, loadHints, loadMatchState, loadWins, saveHints, saveMa
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Square } from "chess.js";
 import { useAudioPlayer } from "expo-audio";
-import { router, useLocalSearchParams, } from "expo-router";
+import { router, useFocusEffect, useIsFocused, useLocalSearchParams } from "expo-router";
 import React, { useEffect } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import {
     game,
     getFen,
@@ -34,6 +34,12 @@ import EvalBar from "@/components/EvalBar";
 import ThinkingDots from "@/components/ThinkingDots";
 import { requiredNumOfWins } from "@/constants/globals";
 import LooseModal from "@/components/LooseModal";
+
+type PendingAction = {
+    kind: "aiMove" | "hint";
+    version: number;
+    fen: string;
+};
 
 const Match = () => {
     const { side, difficulty } = useLocalSearchParams<{ side?: "w" | "b" | "r"; difficulty: Difficulty; }>();
@@ -62,7 +68,8 @@ const Match = () => {
         else if (side === "w") { return "w" }
         else return "b"
     })
-    const { sendCommandToStockfish, setOutputHandler, isEngineReady } = useStockfishContext();
+    const { requestSearch, cancelSearch, isEngineReady, engineError } = useStockfishContext();
+    const isFocused = useIsFocused();
     const [matchInitialization, setMatchInitialization] = React.useState<number | null>(null);
     const initialTurnCheckedRef = React.useRef<number | null>(null);
     const isMatchReady = matchInitialization !== null;
@@ -77,21 +84,83 @@ const Match = () => {
     const [showClaimModal, setShowClaimModal] = React.useState(false);
     const [showSettings, setShowSettings] = React.useState(false);
     const [, setFen] = React.useState(game.fen());
-    const engineRequestRef = React.useRef<"aiMove" | "hint" | null>(null);
+    const actionRef = React.useRef<PendingAction | null>(null);
+    const ownerRef = React.useRef(Symbol("match"));
+    const activeRef = React.useRef(false);
+    const versionRef = React.useRef(0);
+    const timersRef = React.useRef(new Set<ReturnType<typeof setTimeout>>());
+    const initializedRef = React.useRef(false);
+    const multiPvMovesRef = React.useRef<Map<number, string>>(new Map());
+    const winResultRef = React.useRef<{ version: number; fen: string } | null>(null);
     const [hintMove, setHintMove] = React.useState<{ from: Square; to: Square } | null>(null);
     const [hintsLeft, setHintsLeft] = React.useState(3);
     const [isAiThinking, setIsAiThinking] = React.useState(false);
     const [numOfWins, setNumOfWins] = React.useState(0);
 
+    const scheduleTask = React.useCallback((callback: () => void, delay: number, fen?: string) => {
+        const version = versionRef.current;
+        const timer = setTimeout(() => {
+            timersRef.current.delete(timer);
+            if (!activeRef.current || versionRef.current !== version) return;
+            if (fen !== undefined && getFen() !== fen) return;
+            callback();
+        }, delay);
+        timersRef.current.add(timer);
+        return timer;
+    }, []);
+
+    const cancelPendingWork = React.useCallback((newGame = false) => {
+        versionRef.current += 1;
+        timersRef.current.forEach(clearTimeout);
+        timersRef.current.clear();
+        actionRef.current = null;
+        multiPvMovesRef.current.clear();
+        winResultRef.current = null;
+        cancelSearch(ownerRef.current, newGame);
+        try {
+            checkmatePlayer.pause();
+        } catch (error) {
+            console.log("Could not pause result audio:", error);
+        }
+        setIsAiThinking(false);
+        setHintMove(null);
+        setIllegalSquare(null);
+        setPromotionMove(null);
+        setShowWinModal(false);
+        setShowLooseModal(false);
+        setShowClaimModal(false);
+    }, [cancelSearch, checkmatePlayer]);
+
+    const isCurrentAction = (action: PendingAction) =>
+        activeRef.current && actionRef.current === action &&
+        versionRef.current === action.version && getFen() === action.fen;
+
+    const startEngineAction = (action: PendingAction) => {
+        multiPvMovesRef.current.clear();
+        requestSearch({
+            owner: ownerRef.current,
+            fen: action.fen,
+            onOutput: output => {
+                if (isCurrentAction(action)) handleEngineOutput(output, action);
+            },
+            onError: message => {
+                if (!isCurrentAction(action)) return;
+                cancelPendingWork();
+                if (selectedDifficulty === "rookie") Alert.alert("Computer unavailable", message);
+            },
+        });
+    };
+
 
 
     const handlePromotion = (promotion: "q" | "r" | "b" | "n") => {
-        if (!promotionMove) return;
+        if (!activeRef.current || !promotionMove) return;
         const from = promotionMove.from;
         const to = promotionMove.to;
 
         if (!from) return;
 
+        cancelPendingWork();
         playMoveResultSound(promotionMove, "promotion")
 
         movePiece(promotionMove.from, promotionMove.to, promotion);
@@ -150,36 +219,31 @@ const Match = () => {
     };
 
     const getHint = () => {
-        if (!isMatchReady || !isEngineReady || game.isGameOver()) return;
-        if (hintsLeft <= 0) return;
-        if (game.turn() !== playerColor) return;
+        if (!activeRef.current || !isMatchReady || !isEngineReady || game.isGameOver()) return;
+        if (hintsLeft <= 0 || game.turn() !== playerColor) return;
 
-        engineRequestRef.current = "hint";
-
-        sendCommandToStockfish(`position fen ${getFen()}`);
-        sendCommandToStockfish("go depth 1 movetime 1500 ");
+        const action: PendingAction = { kind: "hint", version: versionRef.current, fen: getFen() };
+        actionRef.current = action;
+        startEngineAction(action);
         setHintsLeft(prev => prev - 1);
     };
 
-    const getAiMove = async () => {
-        if (!isMatchReady || !isOpponentReady) return;
+    const getAiMove = () => {
+        if (!activeRef.current || !isMatchReady || !isOpponentReady) return;
         if (game.isGameOver() || game.turn() !== aiSideRef.current) return;
+        const current = actionRef.current;
+        if (current?.kind === "aiMove" && isCurrentAction(current)) return;
 
-        setTimeout(() => {
-            setIsAiThinking(true);
-        }, 200);
-        engineRequestRef.current = "aiMove";
+        const action: PendingAction = { kind: "aiMove", version: versionRef.current, fen: getFen() };
+        actionRef.current = action;
+        scheduleTask(() => setIsAiThinking(true), 200, action.fen);
         if (selectedDifficulty === "rookie") {
-
-            setTimeout(() => {
-                playRookieMove();
-            }, 1500);
-            return;
+            scheduleTask(() => {
+                if (isCurrentAction(action)) playRookieMove(action);
+            }, 1500, action.fen);
+        } else {
+            startEngineAction(action);
         }
-
-        const fen = getFen();
-        sendCommandToStockfish(`position fen ${fen}`);
-        sendCommandToStockfish("go depth 1 movetime 1500");
     };
 
     const checkGameStatus = () => {
@@ -211,6 +275,8 @@ const Match = () => {
     };
 
     const undoMove = () => {
+        if (!activeRef.current || !isMatchReady) return;
+        cancelPendingWork();
         game.undo(); // undo AI move
         game.undo(); // undo player move
 
@@ -219,6 +285,7 @@ const Match = () => {
         setIsCheckmate(false);
         setSquareInCheck("");
         setFen(game.fen());
+        setMatchInitialization(previous => (previous ?? 0) + 1);
     };
 
     const playMoveResultSound = (move: any, status: string) => {
@@ -256,6 +323,7 @@ const Match = () => {
                 })
 
                 playSound(movePlayer);
+                winResultRef.current = { version: versionRef.current, fen: getFen() };
                 playSound(checkmatePlayer); // you won
             } else {
                 playSound(loosePlayer); // you lost
@@ -300,7 +368,8 @@ const Match = () => {
 
 
 
-    const playRookieMove = () => {
+    const playRookieMove = (action: PendingAction) => {
+        if (!isCurrentAction(action) || game.isGameOver() || game.turn() !== aiSideRef.current) return;
         const moves = game.moves({ verbose: true });
 
         if (moves.length === 0) return;
@@ -308,14 +377,9 @@ const Match = () => {
         const randomMove =
             moves[Math.floor(Math.random() * moves.length)];
 
-        setTimeout(() => {
-            setTimeout(() => {
-                setIsAiThinking(false
-
-                );
-
-            }, 300);
-
+        scheduleTask(() => {
+            if (!isCurrentAction(action) || game.isGameOver() || game.turn() !== aiSideRef.current) return;
+            actionRef.current = null;
             moveAiPiece(
                 randomMove.from,
                 randomMove.to,
@@ -356,12 +420,13 @@ const Match = () => {
             });
 
             setFen(game.fen());
+            scheduleTask(() => setIsAiThinking(false), 300, getFen());
 
-        }, 1000);
+        }, 1000, action.fen);
     };
 
     const handleSquarePressIn = (squareName: Square) => {
-        if (!isMatchReady || !isOpponentReady) return;
+        if (!activeRef.current || !isMatchReady || !isOpponentReady) return;
         const piece = getPieceAtSquare(squareName);
         const isLegalTarget = !!selectedSquare && legalMoves.includes(squareName);
         const isOwnPiece = piece && piece.color === playerColor;
@@ -371,7 +436,7 @@ const Match = () => {
 
             playMoveResultSound(squareName, "illegal")
 
-            setTimeout(() => {
+            scheduleTask(() => {
                 setIllegalSquare(null);
             }, 150);
         }
@@ -392,6 +457,7 @@ const Match = () => {
                 return;
             }
 
+            cancelPendingWork();
             movePiece(selectedSquare, squareName);
             saveMatchState({
                 fen: getFen(),
@@ -430,7 +496,6 @@ const Match = () => {
         }
     };
 
-    const multiPvMovesRef = React.useRef<Map<number, string>>(new Map());
     const parseMultiPvLine = (line: string) => {
         const match = line.match(
             /multipv\s+(\d+).*?\spv\s+([a-h][1-8][a-h][1-8][qrbn]?)/
@@ -446,214 +511,150 @@ const Match = () => {
         multiPvMovesRef.current.set(multiPvNumber, move);
     };
 
-    // Refresh the handler after each render so restored colors and difficulty are used.
-    useEffect(() => {
-        setOutputHandler((output: string) => {
-            const cleanOutput = output.trim();
-            if (!cleanOutput) return;
+    const handleEngineOutput = (output: string, action: PendingAction) => {
+        const cleanOutput = output.trim();
+        if (!isCurrentAction(action) || game.isGameOver()) return;
 
-            // console.log(cleanOutput);
+        if (cleanOutput.includes(" multipv ") && cleanOutput.includes(" pv ")) {
+            parseMultiPvLine(cleanOutput);
+            return;
+        }
+        const cpMatch = cleanOutput.match(/score cp (-?\d+)/);
+        if (cpMatch) setEvalScore(Number(cpMatch[1]) / 100);
+        if (!cleanOutput.startsWith("bestmove")) return;
 
-            if (cleanOutput.includes(" multipv ") && cleanOutput.includes(" pv ")) {
-                parseMultiPvLine(cleanOutput);
-                return;
+        const selectedMove = multiPvMovesRef.current.get(1);
+        multiPvMovesRef.current.clear();
+        actionRef.current = null;
+        if (!selectedMove) {
+            setIsAiThinking(false);
+            return;
+        }
+        const from = selectedMove.slice(0, 2) as Square;
+        const to = selectedMove.slice(2, 4) as Square;
+        const promotion = selectedMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
+        if (action.kind === "hint") {
+            setHintMove({ from, to });
+            return;
+        }
+        // Validate against the current board immediately before touching the shared game.
+        const legal = game.moves({ verbose: true }).some(move =>
+            move.from === from && move.to === to && (move.promotion ?? "") === promotion
+        );
+        if (game.turn() !== aiSideRef.current || !legal) {
+            setIsAiThinking(false);
+            return;
+        }
+
+        const aiMove = moveAiPiece(from, to, promotion || undefined);
+        const status = checkGameStatus();
+        playMoveResultSound(aiMove, status);
+        setLastMove({ from, to });
+        setFen(game.fen());
+        scheduleTask(() => setIsAiThinking(false), 300, getFen());
+
+        if (status === "checkmate") {
+            const winner = game.turn() === "w" ? "b" : "w";
+            if (winner !== playerColor) {
+                scheduleTask(() => setShowLooseModal(true), 1000, getFen());
             }
+            return;
+        }
+        if (status === "stalemate" || status === "draw") return;
 
-            const cpMatch = cleanOutput.match(/score cp (-?\d+)/);
+        saveMatchState({
+            fen: getFen(),
+            pgn: getPGN(),
+            playerColor,
+            selectedSquare,
+            aiColor: aiSideRef.current,
+            lastMove: { from, to },
+            savedAt: new Date().toISOString(),
+            difficulty: selectedDifficulty,
+        });
+    };
 
-            if (cpMatch) {
-                const centipawns = Number(cpMatch[1]);
-                setEvalScore(centipawns / 100);
-            }
+    useFocusEffect(React.useCallback(() => {
+        let cancelled = false;
+        activeRef.current = true;
+        initialTurnCheckedRef.current = null;
 
-            if (cleanOutput.startsWith("bestmove")) {
-                // your current bestmove logic here
-
-                const selectedMove = multiPvMovesRef.current.get(1)
-
-                if (!selectedMove) {
-                    multiPvMovesRef.current.clear();
-                    engineRequestRef.current = null;
-                    return;
-                }
-
-                const from = selectedMove.slice(0, 2) as Square;
-                const to = selectedMove.slice(2, 4) as Square;
-                const promotion = selectedMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
-
-                // console.log(engineRequestRef.current);
-                if (engineRequestRef.current === "hint") {
-
-                    setHintMove({ from, to });
-
-                    multiPvMovesRef.current.clear();
-                    engineRequestRef.current = null;
-                    return;
-                }
-
-                if (engineRequestRef.current === "aiMove") {
-                    setTimeout(() => {
-                        setIsAiThinking(false);
-
-                    }, 300);
-
-                    const aiMove = moveAiPiece(from, to, promotion || undefined);
-                    const status = checkGameStatus();
-
-                    playMoveResultSound(aiMove, status);
-
-                    if (!aiMove) return;
-
-                    setLastMove({ from, to });
-                    setFen(game.fen());
-
-                    if (status === "checkmate") {
-                        const winner = game.turn() === "w" ? "b" : "w";
-
-                        if (winner === playerColor) {
-                            console.log("You Win!");
-
-                        } else {
-                            console.log("You Lost!");
-
-                            setTimeout(() => {
-                                setShowLooseModal(true)
-
-                            }, 1000)
-                        }
-
-
-                        engineRequestRef.current = null;
-                        return;
-                    }
-
-                    if (status === "stalemate") {
-                        // Handle stalemate
-                        engineRequestRef.current = null;
-                        return;
-                    }
-
-                    if (status === "draw") {
-                        // Handle draw
-                        engineRequestRef.current = null;
-                        return;
-                    }
-
-
+        if (!initializedRef.current) {
+            scheduleTask(() => setShowClaimModal(true), 1000);
+            loadMatchState().then((savedState) => {
+                if (cancelled || !activeRef.current) return;
+                if (savedState) {
+                    loadFEN(savedState.fen);
+                    loadPGN(savedState.pgn);
+                    setPlayerColor(savedState.playerColor);
+                    setLastMove(savedState.lastMove ?? null);
+                    aiSideRef.current = savedState.aiColor;
+                    setSelectedDifficulty(savedState.difficulty);
+                    setSelectedSquare(savedState.selectedSquare);
+                } else {
+                    cancelSearch(ownerRef.current, true);
+                    resetGame();
                     saveMatchState({
                         fen: getFen(),
-                        pgn: getPGN(),
                         playerColor,
+                        pgn: getPGN(),
                         selectedSquare,
                         aiColor: aiSideRef.current,
-                        lastMove: {
-                            from,
-                            to,
-                        },
+                        lastMove: { from: null, to: null },
                         savedAt: new Date().toISOString(),
                         difficulty: selectedDifficulty,
                     });
-
-                    multiPvMovesRef.current.clear();
-                    engineRequestRef.current = null;
                 }
-            }
-        });
-
-        return () => {
-            setOutputHandler(null);
-        };
-    });
-
-    useEffect(() => {
-        let cancelled = false;
-
-        const claimTimer = setTimeout(() => {
-            setShowClaimModal(true);
-        }, 1000);
-
-        loadMatchState().then((savedState) => {
-            if (cancelled) return;
-            if (savedState) {
-                // console.log(JSON.stringify(savedState, null, 2));
-                loadFEN(savedState.fen);
-                loadPGN(savedState.pgn);
-                setPlayerColor(savedState.playerColor);
-                setLastMove(savedState.lastMove ?? null);
-                aiSideRef.current = savedState.aiColor;
-                setSelectedDifficulty(savedState.difficulty);
-                setSelectedSquare(savedState.selectedSquare)
-                console.log(game.isCheckmate())
-
-            } else {
-                resetGame();
-                saveMatchState({
-                    fen: getFen(),
-                    playerColor,
-                    pgn: getPGN(),
-                    selectedSquare,
-                    aiColor: aiSideRef.current,
-                    lastMove: {
-                        from: null,
-                        to: null,
-                    },
-                    savedAt: new Date().toISOString(),
-                    difficulty: selectedDifficulty,
-                });
-
-                console.log("No Saved Data");
-
-            }
-            setFen(game.fen());
-            setMatchInitialization(0);
-
-
-            if (game.isCheckmate()) {
-                const winner = game.turn() === 'w' ? 'b' : 'w';
-
-                if (winner === playerColor) {
-                    setShowWinModal(true)
-
+                initializedRef.current = true;
+                setFen(game.fen());
+                setMatchInitialization(0);
+                if (game.isCheckmate()) {
+                    const winner = game.turn() === "w" ? "b" : "w";
+                    if (winner === (savedState?.playerColor ?? playerColor)) setShowWinModal(true);
                 }
-            }
-        }).catch((error) => {
-            console.log("Could not initialize match:", error);
-        });
-
-
-        loadWins().then(wins => {
-            if (wins) setNumOfWins(wins)
-        })
-
-        loadHints().then(hints => {
-            if (hints) setHintsLeft(hints)
-        })
-
-
-
-
-
+            }).catch(error => {
+                if (!cancelled) console.log("Could not initialize match:", error);
+            });
+            loadWins().then(wins => {
+                if (!cancelled && activeRef.current && wins) setNumOfWins(wins);
+            });
+            loadHints().then(hints => {
+                if (!cancelled && activeRef.current && hints) setHintsLeft(hints);
+            });
+        }
 
         return () => {
             cancelled = true;
-            clearTimeout(claimTimer);
+            activeRef.current = false;
+            cancelPendingWork();
         };
+        // Initial settings are used only when there is no snapshot; restored settings are applied above.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [cancelPendingWork, cancelSearch, scheduleTask]));
 
     // Check once per initialization/restart, after the position and opponent are ready.
     useEffect(() => {
-        if (!isMatchReady || !isOpponentReady || initialTurnCheckedRef.current === matchInitialization) return;
+        if (!isFocused || !activeRef.current || !isMatchReady || !isOpponentReady || initialTurnCheckedRef.current === matchInitialization) return;
 
         initialTurnCheckedRef.current = matchInitialization;
         getAiMove();
     });
 
     useEffect(() => {
+        if (isFocused && isMatchReady && engineError && selectedDifficulty !== "rookie") {
+            Alert.alert("Computer unavailable", engineError);
+        }
+    }, [engineError, isFocused, isMatchReady, selectedDifficulty]);
+
+    useEffect(() => {
+        const result = winResultRef.current;
         const subscription = checkmatePlayer.addListener(
             "playbackStatusUpdate",
             (status) => {
-                if (status.didJustFinish && game.isCheckmate() && game.turn() !== playerColor) {
+                if (status.didJustFinish && result && winResultRef.current === result &&
+                    activeRef.current && result.version === versionRef.current && result.fen === getFen() &&
+                    game.isCheckmate() && game.turn() !== playerColor) {
+                    winResultRef.current = null;
                     setShowWinModal(true);
 
                     if (numOfWins === requiredNumOfWins) {
@@ -677,7 +678,7 @@ const Match = () => {
         return () => {
             subscription.remove();
         };
-    }, [numOfWins]);
+    });
 
 
 
@@ -686,7 +687,7 @@ const Match = () => {
 
         <View style={styles.screen}>
             <Modal
-                visible={showExitModal}
+                visible={isFocused && showExitModal}
                 transparent
                 animationType="fade"
                 onRequestClose={() => setShowExitModal(false)}
@@ -709,6 +710,8 @@ const Match = () => {
 
                             <Pressable
                                 onPress={() => {
+                                    activeRef.current = false;
+                                    cancelPendingWork(true);
                                     clearMatchState();
                                     resetGame();
 
@@ -717,12 +720,7 @@ const Match = () => {
                                     setLastMove(null);
                                     setFen(game.fen());
 
-                                    sendCommandToStockfish("stop");
-                                    sendCommandToStockfish("ucinewgame");
-
-                                    setTimeout(() => {
-                                        router.replace("ComputerSettings");
-                                    }, 100)
+                                    router.replace("ComputerSettings");
                                 }}
 
                                 style={[styles.modalButton, styles.leaveButton]}
@@ -734,16 +732,14 @@ const Match = () => {
                 </View>
             </Modal>
 
-            <WinModal visible={showWinModal}
+            <WinModal visible={isFocused && showWinModal}
                 wins={numOfWins}
                 requiredWins={requiredNumOfWins}
                 setHintsLeft={setHintsLeft}
                 onNewGame={() => {
-
+                    activeRef.current = false;
+                    cancelPendingWork(true);
                     clearMatchState();
-                    sendCommandToStockfish("stop");
-                    sendCommandToStockfish("ucinewgame");
-                    sendCommandToStockfish("position startpos");
 
                     resetGame();
 
@@ -757,9 +753,7 @@ const Match = () => {
 
                     setFen(game.fen());
 
-                    setTimeout(() => {
-                        router.replace("ComputerSettings");
-                    }, 100)
+                    router.replace("ComputerSettings");
                 }}
                 onGameView={() => {
                     // setShowWinModal(false);
@@ -768,13 +762,11 @@ const Match = () => {
             />
 
             <LooseModal
-                visible={showLooseModal}
+                visible={isFocused && showLooseModal}
                 onNewGame={() => {
-
+                    activeRef.current = false;
+                    cancelPendingWork(true);
                     clearMatchState();
-                    sendCommandToStockfish("stop");
-                    sendCommandToStockfish("ucinewgame");
-                    sendCommandToStockfish("position startpos");
 
                     resetGame();
 
@@ -788,9 +780,7 @@ const Match = () => {
 
                     setFen(game.fen());
 
-                    setTimeout(() => {
-                        router.replace("ComputerSettings");
-                    }, 100)
+                    router.replace("ComputerSettings");
                 }}
                 onGameView={() => {
                     // setShowWinModal(false);
@@ -803,10 +793,12 @@ const Match = () => {
                 }}
                 onDismiss={() => setShowClaimModal(false)} /> */}
             <RewardModal visible={false} onClose={() => { }} />
-            <PromotionModal visible={promotionMove !== null} playerColor={playerColor} onPromote={handlePromotion} />
-            <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} />
+            <PromotionModal visible={isFocused && promotionMove !== null} playerColor={playerColor} onPromote={handlePromotion} />
+            <SettingsModal visible={isFocused && showSettings} onClose={() => setShowSettings(false)} />
             <Header
                 onBack={() => {
+                    activeRef.current = false;
+                    cancelPendingWork(true);
                     game.reset();
                     setFen(game.fen());
                     setLastMove(null);
@@ -814,8 +806,6 @@ const Match = () => {
                     setLegalMoves([]);
                     playSound(illegalPlayer)
                     clearMatchState()
-                    sendCommandToStockfish("stop");
-                    // stopStockfish()
                     router.push("ComputerSettings");
 
 
@@ -860,12 +850,10 @@ const Match = () => {
                         }
                         label="RESTART"
                         onPress={() => {
-                            if (!isMatchReady) return;
+                            if (!activeRef.current || !isMatchReady) return;
+                            cancelPendingWork(true);
                             playSound(capturePlayer);
                             clearMatchState();
-                            sendCommandToStockfish("stop");
-                            sendCommandToStockfish("ucinewgame");
-                            sendCommandToStockfish("position startpos");
                             resetGame();
                             setSelectedSquare(null);
                             setLegalMoves([]);
