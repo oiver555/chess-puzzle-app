@@ -93,6 +93,7 @@ const Match = () => {
     const multiPvMovesRef = React.useRef<Map<number, string>>(new Map());
     const winResultRef = React.useRef<{ version: number; fen: string } | null>(null);
     const [hintMove, setHintMove] = React.useState<{ from: Square; to: Square } | null>(null);
+    const displayedHintFenRef = React.useRef<string | null>(null);
     const [hintsLeft, setHintsLeft] = React.useState(3);
     const [isAiThinking, setIsAiThinking] = React.useState(false);
     const [numOfWins, setNumOfWins] = React.useState(0);
@@ -123,6 +124,7 @@ const Match = () => {
             console.log("Could not pause result audio:", error);
         }
         setIsAiThinking(false);
+        displayedHintFenRef.current = null;
         setHintMove(null);
         setIllegalSquare(null);
         setPromotionMove(null);
@@ -221,11 +223,13 @@ const Match = () => {
     const getHint = () => {
         if (!activeRef.current || !isMatchReady || !isEngineReady || game.isGameOver()) return;
         if (hintsLeft <= 0 || game.turn() !== playerColor) return;
+        if (displayedHintFenRef.current === getFen()) return;
+        const current = actionRef.current;
+        if (current && isCurrentAction(current)) return;
 
         const action: PendingAction = { kind: "hint", version: versionRef.current, fen: getFen() };
         actionRef.current = action;
         startEngineAction(action);
-        setHintsLeft(prev => prev - 1);
     };
 
     const getAiMove = () => {
@@ -533,16 +537,19 @@ const Match = () => {
         const from = selectedMove.slice(0, 2) as Square;
         const to = selectedMove.slice(2, 4) as Square;
         const promotion = selectedMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
-        if (action.kind === "hint") {
-            setHintMove({ from, to });
-            return;
-        }
-        // Validate against the current board immediately before touching the shared game.
+        // Validate hints and computer moves against the exact current position.
         const legal = game.moves({ verbose: true }).some(move =>
             move.from === from && move.to === to && (move.promotion ?? "") === promotion
         );
-        if (game.turn() !== aiSideRef.current || !legal) {
+        const expectedColor = action.kind === "hint" ? playerColor : aiSideRef.current;
+        if (game.turn() !== expectedColor || !legal) {
             setIsAiThinking(false);
+            return;
+        }
+        if (action.kind === "hint") {
+            displayedHintFenRef.current = action.fen;
+            setHintMove({ from, to });
+            setHintsLeft(prev => Math.max(0, prev - 1));
             return;
         }
 
