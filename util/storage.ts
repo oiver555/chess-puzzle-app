@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { SavedAppState, SavedMatchState } from "@/types/match";
+import { Difficulty, SavedAppState, SavedMatchState } from "@/types/match";
+import { Chess } from "chess.js";
 import { OpeningProgress } from "@/data/openings";
 import { STORAGE_KEYS } from "@/constants/storage";
 
@@ -38,11 +39,48 @@ export async function loadWins(): Promise<number> {
   return JSON.parse(data);
 }
 
+export function isSupportedDifficulty(value: unknown): value is Difficulty {
+  return value === "rookie" || value === "skilled" || value === "advanced" || value === "master";
+}
+
+function isSquare(value: unknown): boolean {
+  return typeof value === "string" && /^[a-h][1-8]$/.test(value);
+}
+
 export async function loadMatchState(): Promise<SavedMatchState | null> {
   const data = await AsyncStorage.getItem(STORAGE_KEYS.MATCH_STORAGE_KEY);
 
-  if (!data) return null;
-  return JSON.parse(data);
+  if (data === null) return null;
+  const state: unknown = JSON.parse(data);
+  if (!state || typeof state !== "object" || Array.isArray(state)) {
+    throw new Error("Invalid saved match");
+  }
+  const saved = state as Record<string, unknown>;
+  const lastMove = saved.lastMove;
+  const validLastMove = lastMove === undefined || lastMove === null || (
+    typeof lastMove === "object" && !Array.isArray(lastMove) &&
+    "from" in lastMove && "to" in lastMove && (
+      (lastMove.from === null && lastMove.to === null) ||
+      (isSquare(lastMove.from) && isSquare(lastMove.to))
+    )
+  );
+  if (typeof saved.fen !== "string" || typeof saved.pgn !== "string" ||
+      (saved.playerColor !== "w" && saved.playerColor !== "b") ||
+      saved.aiColor !== (saved.playerColor === "w" ? "b" : "w") ||
+      !isSupportedDifficulty(saved.difficulty) ||
+      (saved.selectedSquare !== null && !isSquare(saved.selectedSquare)) ||
+      !validLastMove || typeof saved.savedAt !== "string" ||
+      !Number.isFinite(Date.parse(saved.savedAt))) {
+    throw new Error("Invalid saved match settings");
+  }
+  // Validate on temporary boards; never partially mutate the live match.
+  const expected = new Chess(saved.fen);
+  const reconstructed = new Chess();
+  reconstructed.loadPgn(saved.pgn);
+  if (reconstructed.fen() !== expected.fen()) {
+    throw new Error("Saved FEN and PGN do not match");
+  }
+  return state as SavedMatchState;
 }
 
 export async function clearMatchState() {

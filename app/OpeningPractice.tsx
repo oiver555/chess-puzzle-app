@@ -1,5 +1,5 @@
-import { useLocalSearchParams, router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Chess, Square } from "chess.js";
 import ChessBoard from "../components/Chessboard";
@@ -23,201 +23,226 @@ export type MoveDetail = {
     commentary?: string;
 };
 
-const REQUIRED_RUNS = 5;
+type PracticeRun = {
+    game: Chess;
+    index: number;
+    correctMoves: number;
+    totalAttempts: number;
+    phase: "student" | "opponent" | "complete" | "error";
+    saveStatus: "idle" | "saving" | "saved" | "failed";
+    progress: OpeningProgress | null;
+    rewardEligible: boolean;
+};
+
+function createRun(opening: Opening): PracticeRun {
+    const game = new Chess();
+    const index = opening.side === "black" ? 1 : 0;
+    if (index) game.move(opening.moves[0]);
+    return {
+        game, index, correctMoves: 0, totalAttempts: 0, phase: "student",
+        saveStatus: "idle", progress: null, rewardEligible: false,
+    };
+}
 
 export default function OpeningPractice() {
     const { opening, masteryPercent: initialMasteryPercent } = useLocalSearchParams();
-    const openingData = JSON.parse(opening as string) as Opening;
+    const openingData = useMemo(() => JSON.parse(opening as string) as Opening, [opening]);
     const playerColor = openingData.side === "black" ? "b" : "w";
+    const [initialRun] = useState(() => createRun(openingData));
+    // This synchronous record also guards against taps arriving before React renders.
+    const runRef = useRef(initialRun);
+    const [game, setGame] = useState(initialRun.game);
+    const [moveIndex, setMoveIndex] = useState(initialRun.index);
     const [showReward, setShowReward] = useState(false);
-    const [game, setGame] = useState(new Chess());
-    const [moveIndex, setMoveIndex] = useState(openingData.side === "black" ? 1 : 0);
-
     const [lastMove, setLastMove] = useState<LastMove>(null);
     const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
     const [legalMoves, setLegalMoves] = useState<Square[]>([]);
     const [masteryPercent, setMasteryPercent] = useState(Number(initialMasteryPercent ?? 0));
+    const [feedback, setFeedback] = useState("Recall the next move in this opening.");
+    const [saveStatus, setSaveStatus] = useState<PracticeRun["saveStatus"]>("idle");
+    const responseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const active = useRef(false);
+    const mounted = useRef(false);
+    const [isFocused, setIsFocused] = useState(false);
 
-    const currentMove = openingData.moves[moveIndex];
+    const cancelResponse = useCallback(() => {
+        if (responseTimer.current !== null) clearTimeout(responseTimer.current);
+        responseTimer.current = null;
+    }, []);
 
-    const handleSquarePress = (squareName: Square) => {
-        const piece = game.get(squareName);
-
-        if (selectedSquare && legalMoves.includes(squareName)) {
-            handleMove(selectedSquare, squareName);
-
-            setSelectedSquare(null);
-            setLegalMoves([]);
-            return;
-        }
-
-        if (piece && piece.color === playerColor) {
-            setSelectedSquare(squareName);
-
-            const moves = game.moves({
-                square: squareName,
-                verbose: true,
-            });
-
-            setLegalMoves(moves.map((move) => move.to as Square));
-        } else {
-            setSelectedSquare(null);
-            setLegalMoves([]);
-        }
-    };
-
-    const handleMove = (from: Square, to: Square) => {
-        const testGame = new Chess(game.fen());
-
-        const move = testGame.move({
-            from,
-            to,
-            promotion: "q",
-        });
-
-
-
-        const updatedGame = new Chess(game.fen());
-
-        // Player move
-        updatedGame.move({
-            from,
-            to,
-            promotion: "q",
-        });
-        setGame(updatedGame);
-        setLastMove({ from, to });
-
-        const nextIndex = moveIndex + 1;
-
-        // Scripted computer response
-        if (openingData.moves[nextIndex]) {
-
-
-            setTimeout(() => {
-                const aiGame = new Chess(updatedGame.fen());
-                const aiMove = aiGame.move(openingData.moves[nextIndex]);
-
-                if (aiMove) {
-                    setGame(aiGame);
-                    setLastMove({
-                        from: aiMove.from as Square,
-                        to: aiMove.to as Square,
-                    });
-                    setMoveIndex(nextIndex + 1);
-                }
-            }, 500);
-
-            return;
-
-
-
-        } else {
-            setMoveIndex(nextIndex);
-            saveOpeningProgress();
-        }
-
-        setGame(updatedGame);
-
-    };
-
-    const resetPractice = () => {
-        const resetGame = new Chess();
-
-        if (openingData.side === "black") {
-            // White starts first
-            resetGame.move(openingData.moves[0]);
-
-            setMoveIndex(1);
-
-        } else {
-            setMoveIndex(0);
-
-        }
-
-        setGame(resetGame);
-
-        setSelectedSquare(null);
-        setLegalMoves([]);
-        setLastMove(null);
-    };
-
-    const formatMove = (move: string) => {
-        if (!move) return "Complete";
-
-        const pieceMap: Record<string, string> = {
-            K: "King",
-            Q: "Queen",
-            R: "Rook",
-            B: "Bishop",
-            N: "Knight",
+    useEffect(() => {
+        mounted.current = true;
+        return () => {
+            mounted.current = false;
+            active.current = false;
+            cancelResponse();
         };
+    }, [cancelResponse]);
 
-        const firstChar = move.charAt(0);
-
-        // Pawn move
-        if (!pieceMap[firstChar]) {
-            return `Pawn to ${move}`;
-        }
-
-        const square = move.slice(1);
-
-        return `${pieceMap[firstChar]} to ${square}`;
-    };
-
-    async function saveOpeningProgress() {
-        const openingId = openingData.name;
-
-        const saved = await AsyncStorage.getItem(
-            STORAGE_KEYS.OPENING_PROGRESS
-        );
-
-        const allProgress: Record<string, OpeningProgress> = saved
-            ? JSON.parse(saved)
-            : {};
-
-        const previous = allProgress[openingId] ?? {
-            openingId,
-            mastery: 0,
-            completedReps: 0,
-            correctMoves: 0,
-            totalAttempts: 0,
-            lastPracticedAt: undefined,
+    useFocusEffect(useCallback(() => {
+        active.current = true;
+        setIsFocused(true);
+        return () => {
+            active.current = false;
+            setIsFocused(false);
+            cancelResponse();
+            setShowReward(false);
         };
+    }, [cancelResponse]));
 
-        const nextMastery = Math.min(previous.mastery + 20, 100);
-
-        allProgress[openingId] = {
-            ...previous,
-            mastery: nextMastery,
-            completedReps: previous.completedReps + 1,
-            correctMoves: previous.correctMoves + openingData.moves.length,
-            totalAttempts: previous.totalAttempts + openingData.moves.length,
-            lastPracticedAt: new Date().toISOString(),
-        };
-
-        await AsyncStorage.setItem(
-            STORAGE_KEYS.OPENING_PROGRESS,
-            JSON.stringify(allProgress)
-        );
-
-        setMasteryPercent(nextMastery);
-
-        if (masteryPercent !== 100 && nextMastery === 100) {
-            setShowReward(true)
+    async function saveOpeningProgress(run: PracticeRun) {
+        if (run.saveStatus === "saving" || run.saveStatus === "saved") return;
+        run.saveStatus = "saving";
+        setSaveStatus("saving");
+        try {
+            const saved = await AsyncStorage.getItem(STORAGE_KEYS.OPENING_PROGRESS);
+            const allProgress: Record<string, OpeningProgress> = saved ? JSON.parse(saved) : {};
+            const openingId = openingData.name;
+            const previous = allProgress[openingId] ?? {
+                openingId, mastery: 0, completedReps: 0, correctMoves: 0, totalAttempts: 0,
+            };
+            // Retain the same award on retry, even if a failed write actually persisted.
+            if (!run.progress) {
+                const nextMastery = Math.min(previous.mastery + 20, 100);
+                run.rewardEligible = previous.mastery < 100 && nextMastery === 100;
+                run.progress = {
+                    ...previous,
+                    mastery: nextMastery,
+                    completedReps: previous.completedReps + 1,
+                    correctMoves: previous.correctMoves + run.correctMoves,
+                    totalAttempts: previous.totalAttempts + run.totalAttempts,
+                    lastPracticedAt: new Date().toISOString(),
+                };
+            }
+            allProgress[openingId] = run.progress;
+            await AsyncStorage.setItem(STORAGE_KEYS.OPENING_PROGRESS, JSON.stringify(allProgress));
+            run.saveStatus = "saved";
+            if (mounted.current && runRef.current === run) {
+                setSaveStatus("saved");
+                setMasteryPercent(run.progress.mastery);
+                setFeedback("Practice complete! Progress saved.");
+                if (active.current && run.rewardEligible) setShowReward(true);
+            }
+        } catch {
+            run.saveStatus = "failed";
+            if (mounted.current && runRef.current === run) {
+                setSaveStatus("failed");
+                setFeedback("Practice complete. Progress could not be saved. Tap Retry save.");
+            }
         }
     }
 
+    function finishPractice(run: PracticeRun) {
+        const studentMoves = openingData.uci.filter((_, index) =>
+            index % 2 === (playerColor === "w" ? 0 : 1)).length;
+        if (!active.current || runRef.current !== run || run.phase === "complete" ||
+            run.index !== openingData.uci.length || run.correctMoves !== studentMoves) return;
+        run.phase = "complete";
+        setFeedback("Practice complete! Saving progress...");
+        void saveOpeningProgress(run);
+    }
 
+    // On refocus, resume a cancelled opponent response from the unchanged position.
     useEffect(() => {
-        if (openingData.side === "black") {
-            // White makes the first move
-            game.move(openingData.moves[0]);
+        const run = runRef.current;
+        if (!isFocused || !active.current || run.phase !== "opponent" ||
+            responseTimer.current !== null) return;
+        const index = run.index;
+        const fen = run.game.fen();
+        const timer = setTimeout(() => {
+            if (responseTimer.current !== timer || !active.current ||
+                runRef.current !== run || run.phase !== "opponent" ||
+                run.index !== index || run.game.fen() !== fen) return;
+            responseTimer.current = null;
+            try {
+                const nextGame = new Chess(fen);
+                const move = nextGame.move(openingData.moves[index]);
+                if (move.from + move.to + (move.promotion ?? "") !== openingData.uci[index]) {
+                    throw new Error("Lesson response does not match its UCI sequence");
+                }
+                run.game = nextGame;
+                run.index++;
+                run.phase = "student";
+                setGame(nextGame);
+                setMoveIndex(run.index);
+                setLastMove({ from: move.from, to: move.to });
+                if (run.index === openingData.uci.length) finishPractice(run);
+                else setFeedback("Your turn. Recall the next move.");
+            } catch {
+                run.phase = "error";
+                setFeedback("The lesson response could not be played. Reset to try again.");
+            }
+        }, 500);
+        responseTimer.current = timer;
+    });
 
+    const handleMove = (from: Square, to: Square) => {
+        const run = runRef.current;
+        if (!active.current || run.phase !== "student" || run.game.turn() !== playerColor) return;
+        const move = run.game.moves({ square: from, verbose: true }).find(candidate =>
+            candidate.to === to && (!candidate.promotion || candidate.promotion === "q"));
+        if (!move) return;
+        run.totalAttempts++;
+        if (move.from + move.to + (move.promotion ?? "") !== openingData.uci[run.index]) {
+            setFeedback("That move is legal, but it isn't in this lesson. Try again.");
+            return;
         }
+        const nextGame = new Chess(run.game.fen());
+        nextGame.move({ from, to, promotion: "q" });
+        run.game = nextGame;
+        run.index++;
+        run.correctMoves++;
+        setGame(nextGame);
+        setMoveIndex(run.index);
+        setLastMove({ from, to });
+        if (run.index === openingData.uci.length) finishPractice(run);
+        else {
+            run.phase = "opponent";
+            setFeedback("Correct! Waiting for the opponent...");
+        }
+    };
 
-    }, []);
+    const handleSquarePress = (square: Square) => {
+        const run = runRef.current;
+        if (!active.current || run.phase !== "student" || run.game.turn() !== playerColor) return;
+        if (selectedSquare && legalMoves.includes(square)) {
+            handleMove(selectedSquare, square);
+            setSelectedSquare(null);
+            setLegalMoves([]);
+            return;
+        }
+        const piece = run.game.get(square);
+        if (piece?.color === playerColor) {
+            setSelectedSquare(square);
+            setLegalMoves(run.game.moves({ square, verbose: true }).map(move => move.to));
+        } else {
+            setSelectedSquare(null);
+            setLegalMoves([]);
+        }
+    };
 
+    const resetPractice = () => {
+        // Keep a completed run's storage update from racing a new run.
+        if (runRef.current.saveStatus === "saving") return;
+        cancelResponse();
+        const run = createRun(openingData);
+        runRef.current = run;
+        setGame(run.game);
+        setMoveIndex(run.index);
+        setSelectedSquare(null);
+        setLegalMoves([]);
+        setLastMove(null);
+        setShowReward(false);
+        setSaveStatus("idle");
+        setFeedback("Recall the next move in this opening.");
+    };
+
+    const exitPractice = () => {
+        active.current = false;
+        cancelResponse();
+        setShowReward(false);
+        router.back();
+    };
 
     return (
         <LinearGradient style={{ flex: 1 }} colors={[COLORS.header.dark, COLORS.header.dark2]} >
@@ -226,7 +251,7 @@ export default function OpeningPractice() {
                 <View style={styles.header}>
                     <Pressable
                         style={styles.headerButton}
-                        onPress={() => router.back()}
+                        onPress={exitPractice}
                     >
                         <Ionicons
                             name="chevron-back"
@@ -260,11 +285,12 @@ export default function OpeningPractice() {
                             color={openingData.color}
                         />
 
-                        <Text style={styles.targetLabel}>TARGET MOVE</Text>
+                        <Text style={styles.targetLabel}>PRACTICE</Text>
 
                         <Text style={styles.targetMove}>
-                            {currentMove ? formatMove(currentMove) : "Complete"}
+                            {feedback}
                         </Text>
+                        <Text style={styles.targetLabel}>{moveIndex} / {openingData.moves.length} moves played</Text>
                     </View>
 
                     <View style={styles.masteryContainer}>
@@ -279,7 +305,7 @@ export default function OpeningPractice() {
                         </Text>
                     </View>
                 </View>
-                <RewardModal visible={showReward} onClose={() => setShowReward(false)} />
+                <RewardModal visible={isFocused && showReward} onClose={() => setShowReward(false)} />
                 <ChessBoard
                     selectedSquare={selectedSquare}
                     legalMoves={legalMoves}
@@ -294,9 +320,14 @@ export default function OpeningPractice() {
                 />
 
                 <View style={styles.controls}>
-                    <Pressable style={styles.button} onPress={resetPractice}>
-                        <Text style={styles.buttonText}>Reset</Text>
+                    <Pressable style={styles.button} onPress={resetPractice} disabled={saveStatus === "saving"}>
+                        <Text style={styles.buttonText}>{saveStatus === "saving" ? "Saving..." : "Reset"}</Text>
                     </Pressable>
+                    {saveStatus === "failed" && (
+                        <Pressable style={styles.button} onPress={() => void saveOpeningProgress(runRef.current)}>
+                            <Text style={styles.buttonText}>Retry save</Text>
+                        </Pressable>
+                    )}
                 </View>
             </SafeAreaView>
         </LinearGradient>
@@ -344,8 +375,9 @@ const styles = StyleSheet.create({
 
     targetMove: {
         color: "#fff",
-        fontSize: 22,
-        fontWeight: "900",
+        fontSize: 15,
+        lineHeight: 21,
+        fontWeight: "700",
     },
     progressTitle: {
         fontWeight: "900",
@@ -444,6 +476,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
     },
     controls: {
+        gap: 8,
         marginTop: 20,
         alignItems: "center",
     },
