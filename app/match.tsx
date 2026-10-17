@@ -4,12 +4,13 @@ import ChessBoard from "@/components/Chessboard";
 import PromotionModal from "@/components/PromotionModal";
 import { COLORS } from "@/theme/colors";
 import { Difficulty, LastMove } from "@/types/match";
-import { clearMatchState, isSupportedDifficulty, loadHints, loadMatchState, loadWins, saveHints, saveMatchState, saveWins } from "@/util/storage";
+import { clearMatchState as removeMatchState, isSupportedDifficulty, loadHints, loadMatchState, loadWins, saveHints, saveMatchState as persistMatchState, saveWins } from "@/util/storage";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Square } from "chess.js";
 import { useAudioPlayer } from "expo-audio";
-import { router, useFocusEffect, useIsFocused, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useIsFocused, useLocalSearchParams, useNavigation } from "expo-router";
 import React, { useEffect } from "react";
+import { usePreventRemove } from "expo-router/react-navigation";
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import {
     game,
@@ -34,6 +35,27 @@ import ThinkingDots from "@/components/ThinkingDots";
 import { requiredNumOfWins } from "@/constants/globals";
 import LooseModal from "@/components/LooseModal";
 
+// Serialize every Match write/delete across screen instances and launch identities.
+let matchStorageQueue: Promise<void> = Promise.resolve();
+let initializationVersion = 0;
+
+function queueMatchSave(state: Parameters<typeof persistMatchState>[0], isAbandoned: () => boolean) {
+    const write = matchStorageQueue.catch(() => {}).then(() => {
+        if (!isAbandoned()) return persistMatchState(state);
+    });
+    matchStorageQueue = write;
+    // Callers that await still receive errors; fire-and-forget move saves are observed.
+    void write.catch(error => console.log("Could not save match:", error));
+    return write;
+}
+
+function clearMatchState() {
+    const removal = matchStorageQueue.catch(() => {}).then(() => removeMatchState());
+    matchStorageQueue = removal;
+    void removal.catch(error => console.log("Could not clear match:", error));
+    return removal;
+}
+
 type SkilledCandidate = { move: string; score: number | null };
 
 type PendingAction = {
@@ -49,7 +71,16 @@ type PendingAction = {
 };
 
 const Match = () => {
-    const { side, difficulty } = useLocalSearchParams<{ side?: "w" | "b" | "r"; difficulty: Difficulty; }>();
+    const { side, difficulty, intent, launchId } = useLocalSearchParams<{
+        side?: "w" | "b" | "r"; difficulty?: Difficulty;
+        intent?: "new" | "recover"; launchId?: string;
+    }>();
+    const launchIdentity = `${intent ?? "recover"}:${launchId ?? "legacy"}:${side ?? ""}:${difficulty ?? ""}`;
+    const abandonedLaunchesRef = React.useRef(new Set<string>());
+    const isAbandoned = React.useCallback(() => abandonedLaunchesRef.current.has(launchIdentity), [launchIdentity]);
+    const saveMatchState = (state: Parameters<typeof persistMatchState>[0]) => queueMatchSave(state, isAbandoned);
+    const navigation = useNavigation();
+    const exitInFlightRef = React.useRef<Promise<void> | null>(null);
     const [selectedDifficulty, setSelectedDifficulty] = React.useState<Difficulty>(isSupportedDifficulty(difficulty) ? difficulty : "rookie")
     const [lastMove, setLastMove] = React.useState<LastMove>(null);
     const movePlayer = useAudioPlayer(SOUNDS.move);
@@ -79,7 +110,8 @@ const Match = () => {
     const isFocused = useIsFocused();
     const [matchInitialization, setMatchInitialization] = React.useState<number | null>(null);
     const initialTurnCheckedRef = React.useRef<number | null>(null);
-    const isMatchReady = matchInitialization !== null;
+    const [readyLaunch, setReadyLaunch] = React.useState<string | null>(null);
+    const isMatchReady = matchInitialization !== null && readyLaunch === launchIdentity;
     const isOpponentReady = selectedDifficulty === "rookie" || isEngineReady;
     const aiSideRef = React.useRef<"w" | "b">(playerColor === "w" ? "b" : "w");
     const [promotionMove, setPromotionMove] = React.useState<{
@@ -96,7 +128,10 @@ const Match = () => {
     const activeRef = React.useRef(false);
     const versionRef = React.useRef(0);
     const timersRef = React.useRef(new Set<ReturnType<typeof setTimeout>>());
-    const initializedRef = React.useRef(false);
+    const initializedRef = React.useRef<string | null>(null);
+    const launchSettingsRef = React.useRef<{
+        identity: string; color: "w" | "b"; difficulty: Difficulty;
+    } | null>(null);
     const winResultRef = React.useRef<{ version: number; fen: string } | null>(null);
     const [hintMove, setHintMove] = React.useState<{ from: Square; to: Square } | null>(null);
     const displayedHintFenRef = React.useRef<string | null>(null);
@@ -138,8 +173,43 @@ const Match = () => {
         setShowClaimModal(false);
     }, [cancelSearch, checkmatePlayer]);
 
+    const abandonMatch = React.useCallback(async (action: Parameters<typeof navigation.dispatch>[0]) => {
+        if (exitInFlightRef.current) return;
+        abandonedLaunchesRef.current.add(launchIdentity);
+        activeRef.current = false;
+        initializedRef.current = null;
+        const generation = ++initializationVersion;
+        cancelPendingWork(true);
+        const exitVersion = versionRef.current;
+        setMatchInitialization(null);
+        setReadyLaunch(null);
+        setShowExitModal(false);
+
+        // A write already inside AsyncStorage cannot be cancelled. Queue deletion
+        // after it; queued/future saves from this lifetime are skipped.
+        const removal = clearMatchState();
+        exitInFlightRef.current = removal;
+        try {
+            await removal;
+            if (generation === initializationVersion && versionRef.current === exitVersion) {
+                navigation.dispatch(action);
+            }
+        } catch (error) {
+            // Keep the route in place on failure; the existing Back control can retry.
+            console.log("Could not discard match before leaving:", error);
+        } finally {
+            if (exitInFlightRef.current === removal) exitInFlightRef.current = null;
+        }
+    }, [cancelPendingWork, launchIdentity, navigation]);
+
+    // Covers app buttons, Android navigation Back, and native back gestures.
+    // Replaying this action is supported by usePreventRemove without prompting again.
+    usePreventRemove(true, ({ data }) => {
+        void abandonMatch(data.action);
+    });
+
     const isCurrentAction = (action: PendingAction) =>
-        activeRef.current && actionRef.current === action &&
+        !isAbandoned() && activeRef.current && actionRef.current === action &&
         versionRef.current === action.version && getFen() === action.fen;
 
     const startEngineAction = (action: PendingAction) => {
@@ -296,6 +366,14 @@ const Match = () => {
         cancelPendingWork();
         game.undo(); // undo AI move
         game.undo(); // undo player move
+        const previousMove = game.history({ verbose: true }).at(-1);
+        const restoredLastMove = previousMove ? { from: previousMove.from, to: previousMove.to } : null;
+        saveMatchState({
+            fen: getFen(), pgn: getPGN(), playerColor, aiColor: aiSideRef.current,
+            difficulty: selectedDifficulty, selectedSquare: null,
+            lastMove: restoredLastMove, savedAt: new Date().toISOString(),
+        });
+        setLastMove(restoredLastMove);
 
         setSelectedSquare(null);
         setLegalMoves([]);
@@ -324,20 +402,6 @@ const Match = () => {
                         return winCount
                     }
                 });
-
-                saveMatchState({
-                    fen: getFen(),
-                    pgn: getPGN(),
-                    selectedSquare,
-                    playerColor,
-                    aiColor: aiSideRef.current,
-                    lastMove: {
-                        from: selectedSquare,
-                        to: null,
-                    },
-                    savedAt: new Date().toISOString(),
-                    difficulty: selectedDifficulty,
-                })
 
                 playSound(movePlayer);
                 winResultRef.current = { version: versionRef.current, fen: getFen() };
@@ -614,15 +678,6 @@ const Match = () => {
         setFen(game.fen());
         scheduleTask(() => setIsAiThinking(false), 300, getFen());
 
-        if (status === "checkmate") {
-            const winner = game.turn() === "w" ? "b" : "w";
-            if (winner !== playerColor) {
-                scheduleTask(() => setShowLooseModal(true), 1000, getFen());
-            }
-            return;
-        }
-        if (status === "stalemate" || status === "draw") return;
-
         saveMatchState({
             fen: getFen(),
             pgn: getPGN(),
@@ -633,62 +688,94 @@ const Match = () => {
             savedAt: new Date().toISOString(),
             difficulty: selectedDifficulty,
         });
+
+        if (status === "checkmate") {
+            const winner = game.turn() === "w" ? "b" : "w";
+            if (winner !== playerColor) {
+                scheduleTask(() => setShowLooseModal(true), 1000, getFen());
+            }
+            return;
+        }
+        if (status === "stalemate" || status === "draw") return;
     };
 
     useFocusEffect(React.useCallback(() => {
         let cancelled = false;
+        if (isAbandoned()) return;
         activeRef.current = true;
         initialTurnCheckedRef.current = null;
 
-        if (!initializedRef.current) {
+        if (initializedRef.current !== launchIdentity) {
+            cancelPendingWork(true);
+            setMatchInitialization(null);
+            setReadyLaunch(null);
+            const generation = ++initializationVersion;
+            const isCurrentInitialization = () =>
+                !cancelled && !isAbandoned() && activeRef.current && generation === initializationVersion;
+            if (launchSettingsRef.current?.identity !== launchIdentity) {
+                launchSettingsRef.current = {
+                    identity: launchIdentity,
+                    color: side === "r" ? (Math.random() < 0.5 ? "w" : "b") : side === "b" ? "b" : "w",
+                    difficulty: isSupportedDifficulty(difficulty) ? difficulty : "rookie",
+                };
+            }
+            const settings = launchSettingsRef.current;
             scheduleTask(() => setShowClaimModal(true), 1000);
-            loadMatchState().catch(() => {
-                if (!cancelled && activeRef.current) {
-                    Alert.alert("Saved match unavailable", "The saved match could not be restored. A fresh match will start with your launch settings (White and Rookie by default).");
+            void (async () => {
+                // Earlier move saves/deletes must finish before any recovery read or replacement.
+                await matchStorageQueue.catch(() => {});
+                if (!isCurrentInitialization()) return;
+                let savedState = null;
+                if (intent !== "new") {
+                    try {
+                        savedState = await loadMatchState();
+                    } catch {
+                        if (!isCurrentInitialization()) return;
+                        Alert.alert("Saved match unavailable", "The saved match could not be restored. A fresh match will start with your launch settings (White and Rookie by default).");
+                    }
                 }
-                return null;
-            }).then(async (savedState) => {
-                if (cancelled || !activeRef.current) return;
-                if (savedState) {
-                    loadPGN(savedState.pgn);
-                    setPlayerColor(savedState.playerColor);
-                    setLastMove(savedState.lastMove ?? null);
-                    aiSideRef.current = savedState.aiColor;
-                    setSelectedDifficulty(savedState.difficulty);
-                    setSelectedSquare(savedState.selectedSquare);
-                } else {
-                    cancelSearch(ownerRef.current, true);
-                    resetGame();
-                    await saveMatchState({
-                        fen: getFen(),
-                        playerColor,
-                        pgn: getPGN(),
-                        selectedSquare,
-                        aiColor: aiSideRef.current,
-                        lastMove: { from: null, to: null },
-                        savedAt: new Date().toISOString(),
-                        difficulty: selectedDifficulty,
-                    });
+                if (!isCurrentInitialization()) return;
+                const color = savedState?.playerColor ?? settings.color;
+                const matchDifficulty = savedState?.difficulty ?? settings.difficulty;
+                if (savedState) loadPGN(savedState.pgn);
+                else resetGame();
+                setPlayerColor(color);
+                setSelectedDifficulty(matchDifficulty);
+                aiSideRef.current = color === "w" ? "b" : "w";
+                setLastMove(savedState?.lastMove ?? null);
+                setSelectedSquare(savedState?.selectedSquare ?? null);
+                setLegalMoves([]);
+                setSquareInCheck("");
+                setIsCheckmate(false);
+                setEvalScore(0);
+                if (!savedState) {
+                    await queueMatchSave({
+                        fen: getFen(), pgn: getPGN(), playerColor: color,
+                        selectedSquare: null, aiColor: aiSideRef.current,
+                        lastMove: null, savedAt: new Date().toISOString(),
+                        difficulty: matchDifficulty,
+                    }, isAbandoned);
                 }
-                if (cancelled || !activeRef.current) return;
-                initializedRef.current = true;
+                if (!isCurrentInitialization()) return;
+                initializedRef.current = launchIdentity;
                 setFen(game.fen());
-                setMatchInitialization(0);
+                setReadyLaunch(launchIdentity);
+                setMatchInitialization(previous => (previous ?? 0) + 1);
                 if (game.isCheckmate()) {
                     const winner = game.turn() === "w" ? "b" : "w";
-                    if (winner === (savedState?.playerColor ?? playerColor)) setShowWinModal(true);
+                    if (winner === color) setShowWinModal(true);
                 }
-            }).catch(error => {
-                if (!cancelled && activeRef.current) {
+            })().catch(error => {
+                if (isCurrentInitialization()) {
                     console.log("Could not initialize match:", error);
                     Alert.alert("Match unavailable", "The match could not be initialized. Leave this screen and try again.");
                 }
             });
             loadWins().then(wins => {
-                if (!cancelled && activeRef.current && wins) setNumOfWins(wins);
+                if (isCurrentInitialization() && wins) setNumOfWins(wins);
             });
             loadHints().then(hints => {
-                if (!cancelled && activeRef.current && hints) setHintsLeft(hints);
+                if (isCurrentInitialization() && hints) setHintsLeft(hints);
             });
         }
 
@@ -697,9 +784,7 @@ const Match = () => {
             activeRef.current = false;
             cancelPendingWork();
         };
-        // Initial settings are used only when there is no snapshot; restored settings are applied above.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [cancelPendingWork, cancelSearch, scheduleTask]));
+    }, [cancelPendingWork, difficulty, intent, isAbandoned, launchIdentity, scheduleTask, side]));
 
     // Check once per initialization/restart, after the position and opponent are ready.
     useEffect(() => {
@@ -778,19 +863,7 @@ const Match = () => {
                             </Pressable>
 
                             <Pressable
-                                onPress={() => {
-                                    activeRef.current = false;
-                                    cancelPendingWork(true);
-                                    clearMatchState();
-                                    resetGame();
-
-                                    setSelectedSquare(null);
-                                    setLegalMoves([]);
-                                    setLastMove(null);
-                                    setFen(game.fen());
-
-                                    router.replace("ComputerSettings");
-                                }}
+                                onPress={() => router.replace("ComputerSettings")}
 
                                 style={[styles.modalButton, styles.leaveButton]}
                             >
@@ -805,25 +878,7 @@ const Match = () => {
                 wins={numOfWins}
                 requiredWins={requiredNumOfWins}
                 setHintsLeft={setHintsLeft}
-                onNewGame={() => {
-                    activeRef.current = false;
-                    cancelPendingWork(true);
-                    clearMatchState();
-
-                    resetGame();
-
-                    setSelectedSquare(null);
-                    setLegalMoves([]);
-                    setLastMove(null);
-                    setIllegalSquare(null);
-                    setSquareInCheck("");
-                    setIsCheckmate(false);
-                    setPromotionMove(null);
-
-                    setFen(game.fen());
-
-                    router.replace("ComputerSettings");
-                }}
+                onNewGame={() => router.replace("ComputerSettings")}
                 onGameView={() => {
                     // setShowWinModal(false);
                 }}
@@ -832,25 +887,7 @@ const Match = () => {
 
             <LooseModal
                 visible={isFocused && showLooseModal}
-                onNewGame={() => {
-                    activeRef.current = false;
-                    cancelPendingWork(true);
-                    clearMatchState();
-
-                    resetGame();
-
-                    setSelectedSquare(null);
-                    setLegalMoves([]);
-                    setLastMove(null);
-                    setIllegalSquare(null);
-                    setSquareInCheck("");
-                    setIsCheckmate(false);
-                    setPromotionMove(null);
-
-                    setFen(game.fen());
-
-                    router.replace("ComputerSettings");
-                }}
+                onNewGame={() => router.replace("ComputerSettings")}
                 onGameView={() => {
                     // setShowWinModal(false);
                 }}
@@ -866,18 +903,8 @@ const Match = () => {
             <SettingsModal visible={isFocused && showSettings} onClose={() => setShowSettings(false)} />
             <Header
                 onBack={() => {
-                    activeRef.current = false;
-                    cancelPendingWork(true);
-                    game.reset();
-                    setFen(game.fen());
-                    setLastMove(null);
-                    setSelectedSquare(null);
-                    setLegalMoves([]);
-                    playSound(illegalPlayer)
-                    clearMatchState()
-                    router.push("ComputerSettings");
-
-
+                    playSound(illegalPlayer);
+                    router.replace("ComputerSettings");
                 }}
                 title={selectedDifficulty}
                 variant={2}
@@ -922,8 +949,12 @@ const Match = () => {
                             if (!activeRef.current || !isMatchReady) return;
                             cancelPendingWork(true);
                             playSound(capturePlayer);
-                            clearMatchState();
                             resetGame();
+                            saveMatchState({
+                                fen: getFen(), pgn: getPGN(), playerColor,
+                                aiColor: aiSideRef.current, difficulty: selectedDifficulty,
+                                selectedSquare: null, lastMove: null, savedAt: new Date().toISOString(),
+                            });
                             setSelectedSquare(null);
                             setLegalMoves([]);
                             setLastMove(null);

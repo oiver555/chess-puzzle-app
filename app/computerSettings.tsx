@@ -22,6 +22,7 @@ const { width, height } = Dimensions.get("window");
 
 const isSmallPhone = height < 700;
 const isNarrowPhone = width < 380;
+let nextLaunchId = 0;
 
 const COLORS = {
   dark: "#062E26",
@@ -205,11 +206,13 @@ export default function ComputerSettings() {
           style={styles.startButton}
           onPress={() => {
             playSound(illegalPlayer)
-            router.push({
+            router.replace({
               pathname: "/Match",
               params: {
                 side,
                 difficulty,
+                intent: "new",
+                launchId: `${Date.now()}-${++nextLaunchId}`,
               },
             })
           }}
