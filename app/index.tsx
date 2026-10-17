@@ -7,9 +7,10 @@ import {
     ScrollView, 
 } from "react-native"; 
 import { Ionicons, MaterialCommunityIcons,  } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useNavigation } from "expo-router";
+import { Chess } from "chess.js";
 import * as NavigationBar from "expo-navigation-bar"; 
-import { getLearnedOpeningsCount, loadAppState } from "@/util/storage";
+import { getLearnedOpeningsCount, loadMatchState } from "@/util/storage";
 import { SettingsModal } from "@/components/SettingsModal"; 
 import { MenuCard } from "@/components/MenuCard";
 import { deviceWidth, isNarrowPhone, isSmallPhone } from "@/constants/globals";
@@ -17,10 +18,15 @@ import { COLORS } from "@/theme/colors";
 import Header from "@/components/Header";
  
 
+// Survives Home remounts, but resets when a terminated application starts again.
+let startupRecoveryFinished = false;
+let startupSnapshot: ReturnType<typeof loadMatchState> | undefined;
+
 export default function App() {
 
     const [showSettings, setShowSettings] = React.useState(false);
     const [learnedOpenings, setLearnedOpenings] = React.useState(0);
+    const navigation = useNavigation();
    
     React.useEffect(() => {
         NavigationBar.setVisibilityAsync("hidden");
@@ -38,18 +44,32 @@ export default function App() {
 
 
     React.useEffect(() => {
-        async function restoreLastScreen() {
-            const saved = await loadAppState();
-
-            if (saved?.lastRoute === "/Match") {
-                console.log("Reload Last Location");
-                
-                router.replace(saved.lastRoute);
+        if (startupRecoveryFinished) return;
+        let cancelled = false;
+        // An actual navigation blur consumes recovery; effect cleanup alone does not
+        // (React Strict Mode may clean up and run this effect again at startup).
+        const unsubscribe = navigation.addListener("blur", () => {
+            startupRecoveryFinished = true;
+        });
+        startupSnapshot ??= loadMatchState();
+        void startupSnapshot.then(saved => {
+            if (cancelled || startupRecoveryFinished || !navigation.isFocused()) return;
+            startupRecoveryFinished = true;
+            if (saved) {
+                const restored = new Chess();
+                restored.loadPgn(saved.pgn);
+                if (!restored.isGameOver()) {
+                    router.replace({ pathname: "/Match", params: { intent: "recover", launchId: "startup" } });
+                }
             }
-        }
-
-        restoreLastScreen();
-    }, []);
+        }).catch(() => {
+            if (!cancelled) startupRecoveryFinished = true;
+        });
+        return () => {
+            cancelled = true;
+            unsubscribe();
+        };
+    }, [navigation]);
     
     return (
         <View style={styles.screen}>
@@ -96,7 +116,10 @@ export default function App() {
                     <MenuCard
                         icon={<MaterialCommunityIcons name="chess-king" size={34} color="#fff" />}
                         title="PLAY VS COMPUTER"
-                        onPress={() => router.push("/ComputerSettings")}
+                        onPress={() => {
+                            startupRecoveryFinished = true;
+                            router.push("/ComputerSettings");
+                        }}
                     />
 
                     <MenuCard
@@ -109,7 +132,10 @@ export default function App() {
                     <MenuCard
                         icon={<Ionicons name="book-outline" size={34} color="#fff" />}
                         title="LEARN OPENINGS"
-                        onPress={() => router.push("/LearnOpenings")}
+                        onPress={() => {
+                            startupRecoveryFinished = true;
+                            router.push("/LearnOpenings");
+                        }}
                     />
                 </View>
             </ScrollView>
