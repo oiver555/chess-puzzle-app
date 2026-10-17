@@ -132,12 +132,15 @@ const Match = () => {
     const launchSettingsRef = React.useRef<{
         identity: string; color: "w" | "b"; difficulty: Difficulty;
     } | null>(null);
-    const winResultRef = React.useRef<{ version: number; fen: string } | null>(null);
+    const terminalResultRef = React.useRef<{
+        launch: string; version: number; fen: string;
+    } | null>(null);
     const [hintMove, setHintMove] = React.useState<{ from: Square; to: Square } | null>(null);
     const displayedHintFenRef = React.useRef<string | null>(null);
     const [hintsLeft, setHintsLeft] = React.useState(3);
     const [isAiThinking, setIsAiThinking] = React.useState(false);
     const [numOfWins, setNumOfWins] = React.useState(0);
+    const winsRef = React.useRef(0);
 
     const scheduleTask = React.useCallback((callback: () => void, delay: number, fen?: string) => {
         const version = versionRef.current;
@@ -156,7 +159,6 @@ const Match = () => {
         timersRef.current.forEach(clearTimeout);
         timersRef.current.clear();
         actionRef.current = null;
-        winResultRef.current = null;
         cancelSearch(ownerRef.current, newGame);
         try {
             checkmatePlayer.pause();
@@ -239,16 +241,16 @@ const Match = () => {
 
 
     const handlePromotion = (promotion: "q" | "r" | "b" | "n") => {
-        if (!activeRef.current || !promotionMove) return;
+        if (!activeRef.current || !isMatchReady || isAbandoned() || game.isGameOver() || !promotionMove) return;
         const from = promotionMove.from;
         const to = promotionMove.to;
 
-        if (!from) return;
+        if (!from || game.turn() !== playerColor || !game.moves({ square: from, verbose: true }).some(
+            move => move.to === to && move.promotion === promotion)) return;
 
         cancelPendingWork();
-        playMoveResultSound(promotionMove, "promotion")
-
-        movePiece(promotionMove.from, promotionMove.to, promotion);
+        const promotedMove = movePiece(from, to, promotion);
+        if (handleTerminalResult({ from, to })) return;
         saveMatchState({
             pgn: getPGN(),
             fen: getFen(),
@@ -270,12 +272,8 @@ const Match = () => {
         setSelectedSquare(null);
         setLegalMoves([]);
         setFen(game.fen());
-        const status = checkGameStatus();
-
-        if (status === "checkmate" || status === "stalemate" || status === "draw") {
-            return;
-        }
-
+        checkGameStatus();
+        playMoveResultSound(promotedMove, "promotion");
         getAiMove();
     };
 
@@ -390,71 +388,106 @@ const Match = () => {
         setMatchInitialization(previous => (previous ?? 0) + 1);
     };
 
-    const playMoveResultSound = (move: any, status: string) => {
-        console.log("Status", status);
+    const handleTerminalResult = (move: LastMove) => {
+        if (!game.isGameOver()) return false;
+        if (!activeRef.current || isAbandoned()) return true;
+        const fen = getFen();
+        const previous = terminalResultRef.current;
+        if (previous?.launch === launchIdentity && previous.fen === fen) return true;
 
-        if (status === "checkmate") {
-            const winner = move?.color === "w" ? "w" : "b";
+        cancelPendingWork();
+        const result = { launch: launchIdentity, version: versionRef.current, fen };
+        terminalResultRef.current = result;
+        const isCurrentResult = () => activeRef.current && !isAbandoned() &&
+            terminalResultRef.current === result && versionRef.current === result.version && getFen() === fen;
+        const checkmate = game.isCheckmate();
+        const humanWon = checkmate && game.turn() !== playerColor;
+        setIsCheckmate(checkmate);
+        if (game.isCheck()) updateCheckSquare();
+        else setSquareInCheck("");
+        setLastMove(move);
+        setSelectedSquare(null);
+        setLegalMoves([]);
+        setFen(fen);
 
-            if (winner === playerColor) {
-                setNumOfWins(prev => {
-                    const winCount = prev + 1
-                    // IF wins is greater then required wins reset win count and add 3 hints
-                    if (winCount > requiredNumOfWins) {
-                        saveWins(1)
-                        return 1
-                    }
-                    else {
-                        saveWins(winCount)
-                        return winCount
-                    }
-                });
+        // Queue the final board before presentation or optional audio.
+        const persisted = saveMatchState({
+            fen, pgn: getPGN(), playerColor, aiColor: aiSideRef.current,
+            difficulty: selectedDifficulty, selectedSquare: null, lastMove: move,
+            savedAt: new Date().toISOString(),
+        });
 
-                playSound(movePlayer);
-                winResultRef.current = { version: versionRef.current, fen: getFen() };
-                playSound(checkmatePlayer); // you won
+        if (checkmate) {
+            if (humanWon) {
+                const incrementedWins = winsRef.current + 1;
+                const nextWins = incrementedWins > requiredNumOfWins ? 1 : incrementedWins;
+                winsRef.current = nextWins;
+                setNumOfWins(nextWins);
+                void saveWins(nextWins).catch(error => console.log("Could not save wins:", error));
+                if (nextWins === requiredNumOfWins) {
+                    setHintsLeft(prev => {
+                        const nextHints = prev + 3;
+                        void saveHints(nextHints).catch(error => console.log("Could not save hint reward:", error));
+                        return nextHints;
+                    });
+                }
+                setShowWinModal(true);
             } else {
-                playSound(loosePlayer); // you lost
+                setShowLooseModal(true);
             }
-
-            return;
+        } else {
+            const reason = game.isStalemate() ? "Stalemate: there are no legal moves, but the king is not in check."
+                : game.isThreefoldRepetition() ? "Draw by threefold repetition."
+                : game.isDrawByFiftyMoves() ? "Draw by the fifty-move rule."
+                : game.isInsufficientMaterial() ? "Draw by insufficient material."
+                : "The game ended in a draw.";
+            Alert.alert("Draw", reason);
         }
 
-        if (status === "draw" || status === "stalemate") {
-            console.log(status);
-            playSound(drawPlayer);
-            return;
-        }
-
-        if (status === "check") {
-            console.log(status);
-            playSound(movePlayer);
-            playSound(checkPlayer);
-            // return;
-        }
-        if (status === "promotion") {
-            playSound(promotionPlayer)
-            return
-        }
-        if (status === "illegal") {
-            playSound(illegalPlayer)
-            return
-        }
-
-        if (move?.isCapture?.() || move?.enPassant?.()) {
-            playSound(capturePlayer);
-            return;
-        }
-
-        if (move?.isKingsideCastle?.() || move?.isQueensideCastle?.()) {
-            playSound(castlePlayer);
-            return;
-        }
-
-        playSound(movePlayer);
+        // Audio cannot block a result or resurrect it after cancellation/navigation.
+        void persisted.then(async () => {
+            if (!isCurrentResult()) return;
+            const player = checkmate ? (humanWon ? checkmatePlayer : loosePlayer) : drawPlayer;
+            try {
+                await player.seekTo(0);
+                if (isCurrentResult()) await player.play();
+            } catch (error) {
+                console.log("Could not play result audio:", error);
+            }
+        }, () => {
+            // queueMatchSave already reports storage errors; do not attempt result audio.
+        });
+        return true;
     };
 
-
+    const playMoveResultSound = (move: any, status: string) => {
+        // Terminal outcomes are processed exclusively by handleTerminalResult.
+        try {
+            if (status === "check") {
+                playSound(movePlayer);
+                playSound(checkPlayer);
+            }
+            if (status === "promotion") {
+                playSound(promotionPlayer);
+                return;
+            }
+            if (status === "illegal") {
+                playSound(illegalPlayer);
+                return;
+            }
+            if (move?.isCapture?.() || move?.enPassant?.()) {
+                playSound(capturePlayer);
+                return;
+            }
+            if (move?.isKingsideCastle?.() || move?.isQueensideCastle?.()) {
+                playSound(castlePlayer);
+                return;
+            }
+            playSound(movePlayer);
+        } catch (error) {
+            console.log("Could not play move audio:", error);
+        }
+    };
 
     const playRookieMove = (action: PendingAction) => {
         if (!isCurrentAction(action) || game.isGameOver() || game.turn() !== aiSideRef.current) return;
@@ -479,6 +512,7 @@ const Match = () => {
                 | undefined
             );
 
+            if (handleTerminalResult({ from: randomMove.from, to: randomMove.to })) return;
             const status = checkGameStatus();
 
             if (randomMove.promotion) {
@@ -514,7 +548,7 @@ const Match = () => {
     };
 
     const handleSquarePressIn = (squareName: Square) => {
-        if (!activeRef.current || !isMatchReady || !isOpponentReady) return;
+        if (!activeRef.current || !isMatchReady || !isOpponentReady || isAbandoned() || game.isGameOver()) return;
         const piece = getPieceAtSquare(squareName);
         const isLegalTarget = !!selectedSquare && legalMoves.includes(squareName);
         const isOwnPiece = piece && piece.color === playerColor;
@@ -547,6 +581,7 @@ const Match = () => {
 
             cancelPendingWork();
             movePiece(selectedSquare, squareName);
+            if (handleTerminalResult({ from: selectedSquare, to: squareName })) return;
             saveMatchState({
                 fen: getFen(),
                 pgn: getPGN(),
@@ -679,6 +714,7 @@ const Match = () => {
         }
 
         const aiMove = moveAiPiece(from, to, promotion || undefined);
+        if (handleTerminalResult({ from, to })) return;
         const status = checkGameStatus();
         playMoveResultSound(aiMove, status);
         setLastMove({ from, to });
@@ -696,14 +732,6 @@ const Match = () => {
             difficulty: selectedDifficulty,
         });
 
-        if (status === "checkmate") {
-            const winner = game.turn() === "w" ? "b" : "w";
-            if (winner !== playerColor) {
-                scheduleTask(() => setShowLooseModal(true), 1000, getFen());
-            }
-            return;
-        }
-        if (status === "stalemate" || status === "draw") return;
     };
 
     useFocusEffect(React.useCallback(() => {
@@ -714,6 +742,7 @@ const Match = () => {
 
         if (initializedRef.current !== launchIdentity) {
             cancelPendingWork(true);
+            terminalResultRef.current = null;
             setMatchInitialization(null);
             setReadyLaunch(null);
             const generation = ++initializationVersion;
@@ -779,7 +808,10 @@ const Match = () => {
                 }
             });
             loadWins().then(wins => {
-                if (isCurrentInitialization() && wins) setNumOfWins(wins);
+                if (isCurrentInitialization() && wins) {
+                    winsRef.current = wins;
+                    setNumOfWins(wins);
+                }
             });
             loadHints().then(hints => {
                 if (isCurrentInitialization() && hints) setHintsLeft(hints);
@@ -806,43 +838,6 @@ const Match = () => {
             Alert.alert("Computer unavailable", engineError);
         }
     }, [engineError, isFocused, isMatchReady, selectedDifficulty]);
-
-    useEffect(() => {
-        const result = winResultRef.current;
-        const subscription = checkmatePlayer.addListener(
-            "playbackStatusUpdate",
-            (status) => {
-                if (status.didJustFinish && result && winResultRef.current === result &&
-                    activeRef.current && result.version === versionRef.current && result.fen === getFen() &&
-                    game.isCheckmate() && game.turn() !== playerColor) {
-                    winResultRef.current = null;
-                    setShowWinModal(true);
-
-                    if (numOfWins === requiredNumOfWins) {
-                        setHintsLeft(prev => {
-
-                            const newHintCount = prev + 3
-
-                            saveHints(newHintCount)
-
-                            return newHintCount
-
-                        })
-                    }
-
-                } else {
-
-                }
-            }
-        );
-
-        return () => {
-            subscription.remove();
-        };
-    });
-
-
-
 
     return (
 
@@ -955,6 +950,7 @@ const Match = () => {
                         onPress={() => {
                             if (!activeRef.current || !isMatchReady) return;
                             cancelPendingWork(true);
+                            terminalResultRef.current = null;
                             playSound(capturePlayer);
                             resetGame();
                             saveMatchState({
