@@ -4,7 +4,7 @@ import ChessBoard from "@/components/Chessboard";
 import PromotionModal from "@/components/PromotionModal";
 import { COLORS } from "@/theme/colors";
 import { Difficulty, LastMove } from "@/types/match";
-import { clearMatchState, loadHints, loadMatchState, loadWins, saveHints, saveMatchState, saveWins } from "@/util/storage";
+import { clearMatchState, isSupportedDifficulty, loadHints, loadMatchState, loadWins, saveHints, saveMatchState, saveWins } from "@/util/storage";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Square } from "chess.js";
 import { useAudioPlayer } from "expo-audio";
@@ -20,8 +20,7 @@ import {
     moveAiPiece,
     movePiece,
     resetGame,
-    loadPGN,
-    loadFEN
+    loadPGN
 } from "../logic/chessGame";
 import { SOUNDS } from "../util/sounds";
 import RewardModal from "@/components/RewardModal";
@@ -35,15 +34,23 @@ import ThinkingDots from "@/components/ThinkingDots";
 import { requiredNumOfWins } from "@/constants/globals";
 import LooseModal from "@/components/LooseModal";
 
+type SkilledCandidate = { move: string; score: number | null };
+
 type PendingAction = {
     kind: "aiMove" | "hint";
     version: number;
     fen: string;
+    skilledAnalysis?: {
+        expected: number;
+        depth: number;
+        candidates: Map<number, SkilledCandidate>;
+        completed?: SkilledCandidate[];
+    };
 };
 
 const Match = () => {
     const { side, difficulty } = useLocalSearchParams<{ side?: "w" | "b" | "r"; difficulty: Difficulty; }>();
-    const [selectedDifficulty, setSelectedDifficulty] = React.useState<Difficulty>(difficulty)
+    const [selectedDifficulty, setSelectedDifficulty] = React.useState<Difficulty>(isSupportedDifficulty(difficulty) ? difficulty : "rookie")
     const [lastMove, setLastMove] = React.useState<LastMove>(null);
     const movePlayer = useAudioPlayer(SOUNDS.move);
     const capturePlayer = useAudioPlayer(SOUNDS.capture);
@@ -65,8 +72,8 @@ const Match = () => {
         if (side === "r") {
             return Math.random() < 0.5 ? "w" : "b"
         }
-        else if (side === "w") { return "w" }
-        else return "b"
+        else if (side === "b") { return "b" }
+        else return "w"
     })
     const { requestSearch, cancelSearch, isEngineReady, engineError } = useStockfishContext();
     const isFocused = useIsFocused();
@@ -90,7 +97,6 @@ const Match = () => {
     const versionRef = React.useRef(0);
     const timersRef = React.useRef(new Set<ReturnType<typeof setTimeout>>());
     const initializedRef = React.useRef(false);
-    const multiPvMovesRef = React.useRef<Map<number, string>>(new Map());
     const winResultRef = React.useRef<{ version: number; fen: string } | null>(null);
     const [hintMove, setHintMove] = React.useState<{ from: Square; to: Square } | null>(null);
     const displayedHintFenRef = React.useRef<string | null>(null);
@@ -115,7 +121,6 @@ const Match = () => {
         timersRef.current.forEach(clearTimeout);
         timersRef.current.clear();
         actionRef.current = null;
-        multiPvMovesRef.current.clear();
         winResultRef.current = null;
         cancelSearch(ownerRef.current, newGame);
         try {
@@ -138,10 +143,18 @@ const Match = () => {
         versionRef.current === action.version && getFen() === action.fen;
 
     const startEngineAction = (action: PendingAction) => {
-        multiPvMovesRef.current.clear();
+        if (action.kind === "aiMove" && selectedDifficulty === "rookie") return;
+        if (action.kind === "aiMove" && selectedDifficulty === "skilled") {
+            action.skilledAnalysis = {
+                expected: Math.min(4, game.moves().length),
+                depth: 0,
+                candidates: new Map(),
+            };
+        }
         requestSearch({
             owner: ownerRef.current,
             fen: action.fen,
+            profile: action.kind === "hint" ? "hint" : selectedDifficulty as Exclude<Difficulty, "rookie">,
             onOutput: output => {
                 if (isCurrentAction(action)) handleEngineOutput(output, action);
             },
@@ -500,52 +513,93 @@ const Match = () => {
         }
     };
 
-    const parseMultiPvLine = (line: string) => {
-        const match = line.match(
-            /multipv\s+(\d+).*?\spv\s+([a-h][1-8][a-h][1-8][qrbn]?)/
-        );
+    const reportInvalidEngineMove = (action: PendingAction) => {
+        if (!isCurrentAction(action)) return;
+        cancelPendingWork();
+        if (action.kind === "hint") {
+            Alert.alert("Hint unavailable", "No valid hint was received. No hint was used. You can try again.");
+            return;
+        }
+        const version = versionRef.current;
+        Alert.alert("Computer move unavailable", "No valid move was received. Retry the computer move or restart the match.", [
+            { text: "Close", style: "cancel" },
+            { text: "Retry", onPress: () => {
+                if (activeRef.current && versionRef.current === version && getFen() === action.fen) getAiMove();
+            } },
+        ]);
+    };
 
-        if (!match) return;
+    const recordSkilledAnalysis = (output: string, action: PendingAction) => {
+        const analysis = action.skilledAnalysis;
+        if (!analysis) return;
+        const depthMatch = /\bdepth (\d+)\b/.exec(output);
+        const rankMatch = /\bmultipv (\d+)\b/.exec(output);
+        const scoreMatch = /\bscore (cp|mate) (-?\d+)\b/.exec(output);
+        const moveMatch = /\bpv ([a-h][1-8][a-h][1-8][qrbn]?)(?:\s|$)/.exec(output);
+        if (!depthMatch || !rankMatch || !scoreMatch || !moveMatch) return;
+        const depth = Number(depthMatch[1]);
+        const rank = Number(rankMatch[1]);
+        if (depth < 1 || depth < analysis.depth || rank < 1 || rank > analysis.expected) return;
+        if (depth > analysis.depth) {
+            analysis.depth = depth;
+            analysis.candidates.clear();
+        }
+        analysis.candidates.set(rank, {
+            move: moveMatch[1],
+            score: scoreMatch[1] === "cp" && !/\b(?:lowerbound|upperbound)\b/.test(output)
+                ? Number(scoreMatch[2]) : null,
+        });
+        if (analysis.candidates.size === analysis.expected) {
+            // Snapshot one complete depth; a partial deeper iteration must not mix scores.
+            analysis.completed = Array.from({ length: analysis.expected }, (_, index) =>
+                analysis.candidates.get(index + 1)!);
+        }
+    };
 
-
-
-        const multiPvNumber = Number(match[1]);
-        const move = match[2];
-
-        multiPvMovesRef.current.set(multiPvNumber, move);
+    const selectSkilledMove = (action: PendingAction, bestmove: string, legalMoves: string[]) => {
+        const candidates = action.skilledAnalysis?.completed;
+        if (!candidates || Math.random() < 0.6) return bestmove;
+        if (new Set(candidates.map(candidate => candidate.move)).size !== candidates.length) return bestmove;
+        const top = candidates[0];
+        const final = candidates.find(candidate => candidate.move === bestmove);
+        if (top.score === null || !legalMoves.includes(top.move) || !final || final.score === null) return bestmove;
+        // UCI scores are relative to the root side to move, for both White and Black.
+        // All candidates belong to this action's FEN, so higher always favors the computer.
+        const topScore = top.score;
+        const finalScore = final.score;
+        const alternatives = candidates.filter(candidate => candidate.score !== null &&
+            legalMoves.includes(candidate.move) && topScore - candidate.score >= 100 &&
+            topScore - candidate.score <= 300 && finalScore - candidate.score >= 50);
+        return alternatives.length ? alternatives[Math.floor(Math.random() * alternatives.length)].move : bestmove;
     };
 
     const handleEngineOutput = (output: string, action: PendingAction) => {
         const cleanOutput = output.trim();
         if (!isCurrentAction(action) || game.isGameOver()) return;
+        if (cleanOutput.startsWith("info ")) recordSkilledAnalysis(cleanOutput, action);
 
-        if (cleanOutput.includes(" multipv ") && cleanOutput.includes(" pv ")) {
-            parseMultiPvLine(cleanOutput);
-            return;
-        }
         const cpMatch = cleanOutput.match(/score cp (-?\d+)/);
         if (cpMatch) setEvalScore(Number(cpMatch[1]) / 100);
         if (!cleanOutput.startsWith("bestmove")) return;
 
-        const selectedMove = multiPvMovesRef.current.get(1);
-        multiPvMovesRef.current.clear();
-        actionRef.current = null;
-        if (!selectedMove) {
-            setIsAiThinking(false);
+        const result = /^bestmove\s+([a-h][1-8][a-h][1-8][qrbn]?)(?:\s+ponder\s+[a-h][1-8][a-h][1-8][qrbn]?)?$/.exec(cleanOutput);
+        if (!result) {
+            reportInvalidEngineMove(action);
             return;
         }
+        // Validate hints and computer moves against the exact current position.
+        const legalMoves = game.moves({ verbose: true }).map(move => move.from + move.to + (move.promotion ?? ""));
+        const expectedColor = action.kind === "hint" ? playerColor : aiSideRef.current;
+        if (game.turn() !== expectedColor || !legalMoves.includes(result[1])) {
+            reportInvalidEngineMove(action);
+            return;
+        }
+        const selectedMove = action.skilledAnalysis
+            ? selectSkilledMove(action, result[1], legalMoves) : result[1];
         const from = selectedMove.slice(0, 2) as Square;
         const to = selectedMove.slice(2, 4) as Square;
         const promotion = selectedMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
-        // Validate hints and computer moves against the exact current position.
-        const legal = game.moves({ verbose: true }).some(move =>
-            move.from === from && move.to === to && (move.promotion ?? "") === promotion
-        );
-        const expectedColor = action.kind === "hint" ? playerColor : aiSideRef.current;
-        if (game.turn() !== expectedColor || !legal) {
-            setIsAiThinking(false);
-            return;
-        }
+        actionRef.current = null;
         if (action.kind === "hint") {
             displayedHintFenRef.current = action.fen;
             setHintMove({ from, to });
@@ -588,10 +642,14 @@ const Match = () => {
 
         if (!initializedRef.current) {
             scheduleTask(() => setShowClaimModal(true), 1000);
-            loadMatchState().then((savedState) => {
+            loadMatchState().catch(() => {
+                if (!cancelled && activeRef.current) {
+                    Alert.alert("Saved match unavailable", "The saved match could not be restored. A fresh match will start with your launch settings (White and Rookie by default).");
+                }
+                return null;
+            }).then(async (savedState) => {
                 if (cancelled || !activeRef.current) return;
                 if (savedState) {
-                    loadFEN(savedState.fen);
                     loadPGN(savedState.pgn);
                     setPlayerColor(savedState.playerColor);
                     setLastMove(savedState.lastMove ?? null);
@@ -601,7 +659,7 @@ const Match = () => {
                 } else {
                     cancelSearch(ownerRef.current, true);
                     resetGame();
-                    saveMatchState({
+                    await saveMatchState({
                         fen: getFen(),
                         playerColor,
                         pgn: getPGN(),
@@ -612,6 +670,7 @@ const Match = () => {
                         difficulty: selectedDifficulty,
                     });
                 }
+                if (cancelled || !activeRef.current) return;
                 initializedRef.current = true;
                 setFen(game.fen());
                 setMatchInitialization(0);
@@ -620,7 +679,10 @@ const Match = () => {
                     if (winner === (savedState?.playerColor ?? playerColor)) setShowWinModal(true);
                 }
             }).catch(error => {
-                if (!cancelled) console.log("Could not initialize match:", error);
+                if (!cancelled && activeRef.current) {
+                    console.log("Could not initialize match:", error);
+                    Alert.alert("Match unavailable", "The match could not be initialized. Leave this screen and try again.");
+                }
             });
             loadWins().then(wins => {
                 if (!cancelled && activeRef.current && wins) setNumOfWins(wins);
