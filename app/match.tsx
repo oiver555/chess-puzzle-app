@@ -362,10 +362,16 @@ const Match = () => {
     };
 
     const undoMove = () => {
-        if (!activeRef.current || !isMatchReady) return;
+        if (!activeRef.current || !isMatchReady || game.isGameOver()) return;
+        const history = game.history({ verbose: true });
+        let humanMoveIndex = history.length - 1;
+        while (humanMoveIndex >= 0 && history[humanMoveIndex].color !== playerColor) humanMoveIndex--;
+        if (humanMoveIndex < 0) return;
+
+        playSound(capturePlayer);
         cancelPendingWork();
-        game.undo(); // undo AI move
-        game.undo(); // undo player move
+        // Remove the latest human move and any computer response to it.
+        for (let index = history.length; index > humanMoveIndex; index--) game.undo();
         const previousMove = game.history({ verbose: true }).at(-1);
         const restoredLastMove = previousMove ? { from: previousMove.from, to: previousMove.to } : null;
         saveMatchState({
@@ -377,8 +383,9 @@ const Match = () => {
 
         setSelectedSquare(null);
         setLegalMoves([]);
-        setIsCheckmate(false);
-        setSquareInCheck("");
+        setIsCheckmate(game.isCheckmate());
+        if (game.isCheck()) updateCheckSquare();
+        else setSquareInCheck("");
         setFen(game.fen());
         setMatchInitialization(previous => (previous ?? 0) + 1);
     };
@@ -984,11 +991,7 @@ const Match = () => {
 
                             />
                         }
-                        label="UNDO" onPress={() => {
-                            playSound(capturePlayer);
-                            undoMove();
-
-                        }} />
+                        label="UNDO" onPress={undoMove} />
                     <ActionButton
                         icon={
                             <Ionicons
