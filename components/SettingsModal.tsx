@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useLayoutEffect } from "react";
 import { updateSetting, useSettings } from "@/util/settings";
 import {
     Modal,
@@ -8,13 +8,14 @@ import {
     StyleSheet,
     Switch,
     Alert,
+    Dimensions,
 } from "react-native";
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
     withTiming,
+    cancelAnimation,
 } from "react-native-reanimated";
-import { Dimensions } from "react-native";
 import { runOnJS } from "react-native-worklets";
 import { resetOpeningProgress } from "@/util/storage";
 import { playSound } from "@/util/chessUtils";
@@ -46,21 +47,33 @@ export const SettingsModal = ({
     const translateX = useSharedValue(screenWidth);
     const illegalPlayer = useAudioPlayer(SOUNDS.illegal);
     const resetInFlight = React.useRef(false);
+    const mounted = React.useRef(false);
+    const closing = React.useRef(false);
+    const visibilityGeneration = React.useRef(0);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
+        mounted.current = true;
+        closing.current = false;
+        const generation = ++visibilityGeneration.current;
         if (visible) {
-            translateX.value = screenWidth;
-            overlayOpacity.value = 0;
+            translateX.set(screenWidth);
+            overlayOpacity.set(0);
 
-            translateX.value = withTiming(0, {
+            translateX.set(withTiming(0, {
                 duration: 300,
-            });
+            }));
 
-            overlayOpacity.value = withTiming(1, {
+            overlayOpacity.set(withTiming(1, {
                 duration: 300,
-            });
+            }));
         }
-    }, [visible]);
+        return () => {
+            mounted.current = false;
+            visibilityGeneration.current = generation + 1;
+            cancelAnimation(translateX);
+            cancelAnimation(overlayOpacity);
+        };
+    }, [visible, translateX, overlayOpacity]);
 
     const handleResetProgress = async () => {
         if (resetInFlight.current) return;
@@ -84,40 +97,47 @@ export const SettingsModal = ({
     }));
 
 
+    const completeClose = (generation: number) => {
+        if (!mounted.current || !visible || !closing.current || visibilityGeneration.current !== generation) return;
+        // Invalidate duplicate UI-thread completions before notifying the parent.
+        visibilityGeneration.current++;
+        onClose();
+    };
+
     const handleClose = () => {
-        translateX.value = withTiming(
+        if (!mounted.current || !visible || closing.current) return;
+        closing.current = true;
+        const generation = visibilityGeneration.current;
+        playSound(illegalPlayer);
+        translateX.set(withTiming(
             screenWidth,
             { duration: 300 }
-        );
+        ));
 
-        overlayOpacity.value = withTiming(
+        overlayOpacity.set(withTiming(
             0,
             { duration: 300 },
             (finished) => {
                 if (finished) {
-                    runOnJS(onClose)();
+                    runOnJS(completeClose)(generation);
                 }
             }
-        );
+        ));
     };
 
-    return <Modal visible={visible} transparent animationType="none">
+    return <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose}>
         <Animated.View
-
-            onTouchStart={() => {
-                playSound(illegalPlayer)
-                handleClose()
-            }}
             style={[
                 styles.overlay,
                 overlayAnimatedStyle,
             ]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close Settings" style={StyleSheet.absoluteFill} onPress={handleClose} />
             <Animated.View style={[styles.settingsModal, animatedStyle]}>
 
                 <View style={styles.header}>
                     <Text style={styles.title}>Settings</Text>
 
-                    <Pressable onPressIn={() => playSound(illegalPlayer)} onPress={handleClose}>
+                    <Pressable onPress={handleClose}>
                         <Text style={styles.close}>✕</Text>
                     </Pressable>
                 </View>
