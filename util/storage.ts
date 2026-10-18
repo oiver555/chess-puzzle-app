@@ -216,26 +216,78 @@ export async function clearAppState() {
   await AsyncStorage.removeItem(STORAGE_KEYS.APP_STATE_KEY);
 }
 
-export async function getOpeningProgress(
-  openingId: string,
-): Promise<OpeningProgress | null> {
-  const saved = await AsyncStorage.getItem(STORAGE_KEYS.OPENING_PROGRESS);
+type OpeningProgressMap = Record<string, OpeningProgress>;
+type OpeningProgressChange = "save" | "reset";
+let openingProgressQueue: Promise<unknown> = Promise.resolve();
+let openingResetVersion = 0;
+const openingProgressListeners = new Set<(change: OpeningProgressChange) => void>();
 
-  if (!saved) {
-    return null;
+function queueOpeningProgress<T>(operation: () => Promise<T>): Promise<T> {
+  const result = openingProgressQueue.catch(() => {}).then(operation);
+  openingProgressQueue = result;
+  return result;
+}
+
+function notifyOpeningProgress(change: OpeningProgressChange) {
+  for (const listener of openingProgressListeners) {
+    try {
+      listener(change);
+    } catch (error) {
+      console.log("Could not refresh opening progress:", error);
+    }
   }
+}
 
-  const allProgress: Record<string, OpeningProgress> = JSON.parse(saved);
+export function subscribeOpeningProgress(listener: (change: OpeningProgressChange) => void): () => void {
+  openingProgressListeners.add(listener);
+  return () => { openingProgressListeners.delete(listener); };
+}
 
+export function getOpeningProgressResetVersion() {
+  return openingResetVersion;
+}
+
+async function readOpeningProgress(): Promise<OpeningProgressMap> {
+  const saved = await AsyncStorage.getItem(STORAGE_KEYS.OPENING_PROGRESS);
+  return saved ? JSON.parse(saved) : {};
+}
+
+export function getAllOpeningProgress(): Promise<OpeningProgressMap> {
+  return queueOpeningProgress(readOpeningProgress);
+}
+
+export function updateOpeningProgress(
+  openingId: string,
+  update: (previous: OpeningProgress | undefined) => OpeningProgress,
+  resetVersion?: number,
+): Promise<OpeningProgress | null> {
+  return queueOpeningProgress(async () => {
+    // A retry from a run preceding a successful reset cannot resurrect its award.
+    if (resetVersion !== undefined && resetVersion !== openingResetVersion) return null;
+    const allProgress = await readOpeningProgress();
+    const progress = update(allProgress[openingId]);
+    allProgress[openingId] = progress;
+    await AsyncStorage.setItem(STORAGE_KEYS.OPENING_PROGRESS, JSON.stringify(allProgress));
+    notifyOpeningProgress("save");
+    return progress;
+  });
+}
+
+export function resetOpeningProgress(): Promise<void> {
+  return queueOpeningProgress(async () => {
+    await AsyncStorage.removeItem(STORAGE_KEYS.OPENING_PROGRESS);
+    openingResetVersion += 1;
+    notifyOpeningProgress("reset");
+  });
+}
+
+export async function getOpeningProgress(openingId: string): Promise<OpeningProgress | null> {
+  const allProgress = await getAllOpeningProgress();
   return allProgress[openingId] ?? null;
 }
 
 export async function getLearnedOpeningsCount() {
-  const saved = await AsyncStorage.getItem(STORAGE_KEYS.OPENING_PROGRESS);
-
-  if (!saved) return 0;
-
-  const allProgress: Record<string, OpeningProgress> = JSON.parse(saved);
+  const allProgress = await getAllOpeningProgress();
 
   return Object.values(allProgress).filter(
     (progress) => progress.mastery >= 100,

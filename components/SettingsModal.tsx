@@ -6,6 +6,7 @@ import {
     Pressable,
     StyleSheet,
     Switch,
+    Alert,
 } from "react-native";
 import Animated, {
     useSharedValue,
@@ -14,7 +15,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Dimensions } from "react-native";
 import { runOnJS } from "react-native-worklets";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { resetOpeningProgress } from "@/util/storage";
 import { playSound } from "@/util/chessUtils";
 import { useAudioPlayer } from "expo-audio";
 import { SOUNDS } from "@/util/sounds";
@@ -39,6 +40,7 @@ export const SettingsModal = ({
     const overlayOpacity = useSharedValue(0);
     const translateX = useSharedValue(screenWidth);
     const illegalPlayer = useAudioPlayer(SOUNDS.illegal);
+    const resetInFlight = React.useRef(false);
 
     useEffect(() => {
         if (visible) {
@@ -56,12 +58,15 @@ export const SettingsModal = ({
     }, [visible]);
 
     const handleResetProgress = async () => {
-        console.log("Reset Progress");
-
+        if (resetInFlight.current) return;
+        resetInFlight.current = true;
         try {
-            await AsyncStorage.clear();
+            await resetOpeningProgress();
         } catch (error) {
-            console.log(error);
+            console.log("Could not reset opening progress:", error);
+            Alert.alert("Progress reset failed", "Opening progress could not be reset. Please try again.");
+        } finally {
+            resetInFlight.current = false;
         }
     };
 

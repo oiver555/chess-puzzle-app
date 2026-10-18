@@ -11,8 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import MasteryCircle from "@/components/MasteryCircle";
 import { Opening, OpeningProgress } from "@/data/openings";
 import { LastMove } from "@/types/match";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { STORAGE_KEYS } from "@/constants/storage";
+import { getOpeningProgressResetVersion, updateOpeningProgress } from "@/util/storage";
 
 export type MoveDetail = {
     order: string;
@@ -32,6 +31,7 @@ type PracticeRun = {
     saveStatus: "idle" | "saving" | "saved" | "failed";
     progress: OpeningProgress | null;
     rewardEligible: boolean;
+    progressResetVersion?: number;
 };
 
 function createRun(opening: Opening): PracticeRun {
@@ -95,35 +95,42 @@ export default function OpeningPractice() {
         run.saveStatus = "saving";
         setSaveStatus("saving");
         try {
-            const saved = await AsyncStorage.getItem(STORAGE_KEYS.OPENING_PROGRESS);
-            const allProgress: Record<string, OpeningProgress> = saved ? JSON.parse(saved) : {};
             const openingId = openingData.name;
-            const previous = allProgress[openingId] ?? {
-                openingId, mastery: 0, completedReps: 0, correctMoves: 0, totalAttempts: 0,
-            };
-            // Retain the same award on retry, even if a failed write actually persisted.
-            if (!run.progress) {
-                const nextMastery = Math.min(previous.mastery + 20, 100);
-                run.rewardEligible = previous.mastery < 100 && nextMastery === 100;
-                run.progress = {
-                    ...previous,
-                    mastery: nextMastery,
-                    completedReps: previous.completedReps + 1,
-                    correctMoves: previous.correctMoves + run.correctMoves,
-                    totalAttempts: previous.totalAttempts + run.totalAttempts,
-                    lastPracticedAt: new Date().toISOString(),
+            const progress = await updateOpeningProgress(openingId, savedProgress => {
+                run.progressResetVersion ??= getOpeningProgressResetVersion();
+                const previous = savedProgress ?? {
+                    openingId, mastery: 0, completedReps: 0, correctMoves: 0, totalAttempts: 0,
                 };
-            }
-            allProgress[openingId] = run.progress;
-            await AsyncStorage.setItem(STORAGE_KEYS.OPENING_PROGRESS, JSON.stringify(allProgress));
+                // Retain the same award on retry, even if a failed write actually persisted.
+                if (!run.progress) {
+                    const nextMastery = Math.min(previous.mastery + 20, 100);
+                    run.rewardEligible = previous.mastery < 100 && nextMastery === 100;
+                    run.progress = {
+                        ...previous,
+                        mastery: nextMastery,
+                        completedReps: previous.completedReps + 1,
+                        correctMoves: previous.correctMoves + run.correctMoves,
+                        totalAttempts: previous.totalAttempts + run.totalAttempts,
+                        lastPracticedAt: new Date().toISOString(),
+                    };
+                }
+                return run.progress;
+            }, run.progressResetVersion);
             run.saveStatus = "saved";
             if (mounted.current && runRef.current === run) {
                 setSaveStatus("saved");
-                setMasteryPercent(run.progress.mastery);
+                if (!progress || run.progressResetVersion !== getOpeningProgressResetVersion()) {
+                    setMasteryPercent(0);
+                    setShowReward(false);
+                    setFeedback("Learning progress was reset. Reset practice to start a new run.");
+                    return;
+                }
+                setMasteryPercent(progress.mastery);
                 setFeedback("Practice complete! Progress saved.");
                 if (active.current && run.rewardEligible) setShowReward(true);
             }
         } catch {
+            run.progressResetVersion ??= getOpeningProgressResetVersion();
             run.saveStatus = "failed";
             if (mounted.current && runRef.current === run) {
                 setSaveStatus("failed");

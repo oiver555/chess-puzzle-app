@@ -28,7 +28,7 @@ import BP from "../assets/pieces/svg/bP.svg";
 import MasteryCircle from "@/components/MasteryCircle";
 import AdBanner from "@/components/AdBanner";
 import { Opening, OpeningProgress } from "@/data/openings";
-import { getOpeningProgress } from "@/util/storage";
+import { getOpeningProgress, subscribeOpeningProgress } from "@/util/storage";
 
 const { width } = Dimensions.get("window");
 type ChessPieceComponent = React.ComponentType<any>;
@@ -57,21 +57,32 @@ export default function OpeningDetailScreen() {
     const [masteryPercent, setMasteryPercent] =
         React.useState<number>(defaultProgress.mastery);
 
-    useFocusEffect(() => {
+    useFocusEffect(React.useCallback(() => {
+        let cancelled = false;
+        let request = 0;
         async function load() {
-            const progress = await getOpeningProgress(
-                openingData.name
-            );
-
-            if (!progress) return;
-
-            setMasteryPercent(progress.mastery);
-            // setCompletedReps(progress.completedReps);
+            const current = ++request;
+            try {
+                const progress = await getOpeningProgress(openingData.name);
+                if (!cancelled && current === request) setMasteryPercent(progress?.mastery ?? 0);
+            } catch (error) {
+                console.log("Could not load opening mastery:", error);
+            }
         }
-
-        load();
-
-    } );
+        const unsubscribe = subscribeOpeningProgress(change => {
+            if (change === "reset") {
+                request += 1;
+                setMasteryPercent(0);
+            } else {
+                void load();
+            }
+        });
+        void load();
+        return () => {
+            cancelled = true;
+            unsubscribe();
+        };
+    }, [openingData.name]));
  
     const pieceMap: Record<string, React.ComponentType<any>> = {
         p: BP,

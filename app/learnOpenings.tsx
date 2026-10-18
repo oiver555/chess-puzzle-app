@@ -15,8 +15,7 @@ import AdBanner from "@/components/AdBanner";
 import { LinearGradient } from "expo-linear-gradient";
 import { OpeningProgress, openings } from "@/data/openings";
 import MasteryCircle from "@/components/MasteryCircle";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { STORAGE_KEYS } from "@/constants/storage";
+import { getAllOpeningProgress, subscribeOpeningProgress } from "@/util/storage";
 
 
 
@@ -28,19 +27,30 @@ export default function LearnOpeningsScreen() {
 
     useFocusEffect(
         useCallback(() => {
+            let cancelled = false;
+            let request = 0;
             async function loadProgress() {
-                const saved = await AsyncStorage.getItem(
-                    STORAGE_KEYS.OPENING_PROGRESS
-                );
-
-                const allProgress: Record<string, OpeningProgress> = saved
-                    ? JSON.parse(saved)
-                    : {};
-
-                setProgressByOpening(allProgress);
+                const current = ++request;
+                try {
+                    const allProgress = await getAllOpeningProgress();
+                    if (!cancelled && current === request) setProgressByOpening(allProgress);
+                } catch (error) {
+                    console.log("Could not load opening progress:", error);
+                }
             }
-
-            loadProgress();
+            const unsubscribe = subscribeOpeningProgress(change => {
+                if (change === "reset") {
+                    request += 1;
+                    setProgressByOpening({});
+                } else {
+                    void loadProgress();
+                }
+            });
+            void loadProgress();
+            return () => {
+                cancelled = true;
+                unsubscribe();
+            };
         }, [])
     );
 

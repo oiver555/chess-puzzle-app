@@ -10,7 +10,7 @@ import { Ionicons, MaterialCommunityIcons,  } from "@expo/vector-icons";
 import { router, useNavigation } from "expo-router";
 import { Chess } from "chess.js";
 import * as NavigationBar from "expo-navigation-bar"; 
-import { getLearnedOpeningsCount, loadMatchState } from "@/util/storage";
+import { getLearnedOpeningsCount, loadMatchState, subscribeOpeningProgress } from "@/util/storage";
 import { SettingsModal } from "@/components/SettingsModal"; 
 import { MenuCard } from "@/components/MenuCard";
 import { deviceWidth, isNarrowPhone, isSmallPhone } from "@/constants/globals";
@@ -30,14 +30,29 @@ export default function App() {
    
     React.useEffect(() => {
         NavigationBar.setVisibilityAsync("hidden");
-
+        let cancelled = false;
+        let request = 0;
         async function load() {
-            const count = await getLearnedOpeningsCount();
-            setLearnedOpenings(count);
+            const current = ++request;
+            try {
+                const count = await getLearnedOpeningsCount();
+                if (!cancelled && current === request) setLearnedOpenings(count);
+            } catch (error) {
+                console.log("Could not load learned openings:", error);
+            }
         }
-
-        load();
+        const unsubscribe = subscribeOpeningProgress(change => {
+            if (change === "reset") {
+                request += 1;
+                setLearnedOpenings(0);
+            } else {
+                void load();
+            }
+        });
+        void load();
         return () => {
+            cancelled = true;
+            unsubscribe();
             NavigationBar.setVisibilityAsync("visible");
         };
     }, []);
