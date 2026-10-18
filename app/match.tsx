@@ -4,7 +4,7 @@ import ChessBoard from "@/components/Chessboard";
 import PromotionModal from "@/components/PromotionModal";
 import { COLORS } from "@/theme/colors";
 import { Difficulty, LastMove } from "@/types/match";
-import { clearMatchState as removeMatchState, isSupportedDifficulty, loadHints, loadMatchState, loadWins, saveHints, saveMatchState as persistMatchState, saveWins } from "@/util/storage";
+import { awardVictory, createMatchId, clearMatchState as removeMatchState, isSupportedDifficulty, loadProgress, loadMatchState, saveHints, saveMatchState as persistMatchState } from "@/util/storage";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Square } from "chess.js";
 import { useAudioPlayer } from "expo-audio";
@@ -39,8 +39,11 @@ import LooseModal from "@/components/LooseModal";
 let matchStorageQueue: Promise<void> = Promise.resolve();
 let initializationVersion = 0;
 
-function queueMatchSave(state: Parameters<typeof persistMatchState>[0], isAbandoned: () => boolean) {
-    const write = matchStorageQueue.catch(() => {}).then(() => {
+function queueMatchSave(state: Parameters<typeof persistMatchState>[0], isAbandoned: () => boolean, beforeWrite?: Promise<unknown>) {
+    // Observe a failed award even while an earlier board write is still pending.
+    void beforeWrite?.catch(() => {});
+    const write = matchStorageQueue.catch(() => {}).then(async () => {
+        await beforeWrite;
         if (!isAbandoned()) return persistMatchState(state);
     });
     matchStorageQueue = write;
@@ -78,7 +81,9 @@ const Match = () => {
     const launchIdentity = `${intent ?? "recover"}:${launchId ?? "legacy"}:${side ?? ""}:${difficulty ?? ""}`;
     const abandonedLaunchesRef = React.useRef(new Set<string>());
     const isAbandoned = React.useCallback(() => abandonedLaunchesRef.current.has(launchIdentity), [launchIdentity]);
-    const saveMatchState = (state: Parameters<typeof persistMatchState>[0]) => queueMatchSave(state, isAbandoned);
+    const matchIdRef = React.useRef<string | null>(null);
+    const saveMatchState = (state: Parameters<typeof persistMatchState>[0], beforeWrite?: Promise<unknown>) =>
+        queueMatchSave({ ...state, matchId: matchIdRef.current ?? undefined }, isAbandoned, beforeWrite);
     const navigation = useNavigation();
     const exitInFlightRef = React.useRef<Promise<void> | null>(null);
     const [selectedDifficulty, setSelectedDifficulty] = React.useState<Difficulty>(isSupportedDifficulty(difficulty) ? difficulty : "rookie")
@@ -427,23 +432,23 @@ const Match = () => {
         setLegalMoves([]);
         setFen(fen);
 
-        // Queue the final board before presentation or optional audio.
+        const award = humanWon ? awardVictory(matchIdRef.current ?? "").then(progress => {
+            if (isCurrentResult()) {
+                winsRef.current = progress.wins;
+                setNumOfWins(progress.wins);
+                hintsBalanceRef.current = progress.hints;
+                setHintsLeft(progress.hints);
+            }
+        }) : undefined;
+        // Keep board ordering, but never make a victory unrecoverable before its award.
         const persisted = saveMatchState({
             fen, pgn: getPGN(), playerColor, aiColor: aiSideRef.current,
             difficulty: selectedDifficulty, selectedSquare: null, lastMove: move,
             savedAt: new Date().toISOString(),
-        });
+        }, award);
 
         if (checkmate) {
             if (humanWon) {
-                const incrementedWins = winsRef.current + 1;
-                const nextWins = incrementedWins > requiredNumOfWins ? 1 : incrementedWins;
-                winsRef.current = nextWins;
-                setNumOfWins(nextWins);
-                void saveWins(nextWins).catch(error => console.log("Could not save wins:", error));
-                if (nextWins === requiredNumOfWins) {
-                    updateHintBalance(2);
-                }
                 setShowWinModal(true);
             } else {
                 setShowLooseModal(true);
@@ -468,7 +473,10 @@ const Match = () => {
                 console.log("Could not play result audio:", error);
             }
         }, () => {
-            // queueMatchSave already reports storage errors; do not attempt result audio.
+            // Neither the board nor the award is claimed to be durable on failure.
+            if (humanWon && isCurrentResult()) {
+                Alert.alert("Victory not fully saved", "The result could not be fully saved. Pending victory credit will be retried when the next match loads. If the initial award write failed, the earlier unfinished position remains recoverable.");
+            }
         });
         return true;
     };
@@ -775,10 +783,12 @@ const Match = () => {
                 // Earlier move saves/deletes must finish before any recovery read or replacement.
                 await matchStorageQueue.catch(() => {});
                 if (!isCurrentInitialization()) return;
-                const hints = await loadHints();
+                const progress = await loadProgress();
                 if (!isCurrentInitialization()) return;
-                hintsBalanceRef.current = hints;
-                setHintsLeft(hints);
+                hintsBalanceRef.current = progress.hints;
+                setHintsLeft(progress.hints);
+                winsRef.current = progress.wins;
+                setNumOfWins(progress.wins);
                 let savedState = null;
                 if (intent !== "new") {
                     try {
@@ -791,6 +801,7 @@ const Match = () => {
                 if (!isCurrentInitialization()) return;
                 const color = savedState?.playerColor ?? settings.color;
                 const matchDifficulty = savedState?.difficulty ?? settings.difficulty;
+                matchIdRef.current = savedState?.matchId ?? createMatchId();
                 if (savedState) loadPGN(savedState.pgn);
                 else resetGame();
                 setPlayerColor(color);
@@ -803,12 +814,13 @@ const Match = () => {
                 if (game.isCheck()) updateCheckSquare();
                 else setSquareInCheck("");
                 setEvalScore(0);
-                if (!savedState) {
+                if (!savedState || !savedState.matchId) {
                     await queueMatchSave({
                         fen: getFen(), pgn: getPGN(), playerColor: color,
                         selectedSquare: null, aiColor: aiSideRef.current,
-                        lastMove: null, savedAt: new Date().toISOString(),
+                        lastMove: savedState?.lastMove ?? null, savedAt: new Date().toISOString(),
                         difficulty: matchDifficulty,
+                        matchId: matchIdRef.current,
                     }, isAbandoned);
                 }
                 if (!isCurrentInitialization()) return;
@@ -820,12 +832,6 @@ const Match = () => {
                 if (isCurrentInitialization()) {
                     console.log("Could not initialize match:", error);
                     Alert.alert("Match unavailable", "The match could not be initialized. Leave this screen and try again.");
-                }
-            });
-            loadWins().then(wins => {
-                if (isCurrentInitialization() && wins) {
-                    winsRef.current = wins;
-                    setNumOfWins(wins);
                 }
             });
         }
@@ -959,13 +965,20 @@ const Match = () => {
                             />
                         }
                         label="RESTART"
-                        onPress={() => {
+                        onPress={async () => {
                             if (!activeRef.current || !isMatchReady) return;
                             cancelPendingWork(true);
+                            const restartVersion = versionRef.current;
                             terminalResultRef.current = null;
-                            playSound(capturePlayer);
+                            setReadyLaunch(null);
+                            matchIdRef.current = createMatchId();
+                            try {
+                                playSound(capturePlayer);
+                            } catch (error) {
+                                console.log("Could not play restart sound:", error);
+                            }
                             resetGame();
-                            saveMatchState({
+                            const persisted = saveMatchState({
                                 fen: getFen(), pgn: getPGN(), playerColor,
                                 aiColor: aiSideRef.current, difficulty: selectedDifficulty,
                                 selectedSquare: null, lastMove: null, savedAt: new Date().toISOString(),
@@ -979,6 +992,23 @@ const Match = () => {
                             setPromotionMove(null);
 
                             setFen(game.fen());
+                            try {
+                                // Reload accounting too: an earlier victory may still be pending.
+                                await persisted;
+                                const progress = await loadProgress();
+                                if (!activeRef.current || isAbandoned() || versionRef.current !== restartVersion) return;
+                                winsRef.current = progress.wins;
+                                setNumOfWins(progress.wins);
+                                hintsBalanceRef.current = progress.hints;
+                                setHintsLeft(progress.hints);
+                            } catch (error) {
+                                console.log("Could not restart match:", error);
+                                if (activeRef.current && !isAbandoned() && versionRef.current === restartVersion) {
+                                    Alert.alert("Match unavailable", "The new match could not be saved or its progress loaded. Leave this screen and try again.");
+                                }
+                                return;
+                            }
+                            setReadyLaunch(launchIdentity);
                             setMatchInitialization(previous => (previous ?? 0) + 1);
                         }} />
                     <ActionButton
