@@ -5,6 +5,7 @@ import AnimatedPiece from "./AnimatedPiece";
 import { COLORS } from "../theme/colors";
 import { ChessBoardProps } from "@/types/match";
 import HintArrow from "./HintArrow";
+import { useSettings } from "@/util/settings";
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export default function ChessBoard({
@@ -19,6 +20,7 @@ export default function ChessBoard({
   onSquarePressIn,
   hintMove,
 }: ChessBoardProps) {
+  const { highlightMoves } = useSettings();
   const [boardSize, setBoardSize] = useState(0);
 
   const indexToSquare = (i: number): Square => {
@@ -196,9 +198,9 @@ export default function ChessBoard({
             // onPress={() => onSquarePress(squareName)}
             onPressIn={() => onSquarePressIn(squareName)}
           >
-            {isLegalMove && <View style={styles.legalMoveDot} />}
-            {isLastMoveFrom && (<View style={[styles.fill, { backgroundColor: COLORS.board.lastFromMove, borderWidth: 3, borderColor: "yellow", }]} />)}
-            {isLastMoveTo && (<View style={[styles.fill, { backgroundColor: COLORS.board.lastToMove, borderWidth: 3, borderColor: "yellow", }]} />)}
+            {highlightMoves && isLegalMove && <View style={styles.legalMoveDot} />}
+            {highlightMoves && isLastMoveFrom && (<View style={[styles.fill, { backgroundColor: COLORS.board.lastFromMove, borderWidth: 3, borderColor: "yellow", }]} />)}
+            {highlightMoves && isLastMoveTo && (<View style={[styles.fill, { backgroundColor: COLORS.board.lastToMove, borderWidth: 3, borderColor: "yellow", }]} />)}
             {isCheckedSquare && (<Animated.View
               style={[
                 styles.fill,

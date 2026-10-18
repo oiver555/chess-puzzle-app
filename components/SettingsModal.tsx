@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
+import { updateSetting, useSettings } from "@/util/settings";
 import {
     Modal,
     View,
@@ -34,9 +35,13 @@ export const SettingsModal = ({
 }: SettingsModalProps) => {
 
 
-    const [highlightMoves, setHighlightMoves] = useState(true);
-    const [showMoveHints, setShowMoveHints] = useState(false);
-    const [soundEnabled, setSoundEnabled] = useState(true);
+    const { highlightMoves, showMoveHints, soundEnabled } = useSettings();
+    const changeSetting = (key: "highlightMoves" | "showMoveHints" | "soundEnabled", value: boolean) => {
+        void updateSetting(key, value).catch(error => {
+            console.log("Could not save settings:", error);
+            Alert.alert("Settings not saved", "Your preference could not be saved. Any change shown applies to this session only. Please try again.");
+        });
+    };
     const overlayOpacity = useSharedValue(0);
     const translateX = useSharedValue(screenWidth);
     const illegalPlayer = useAudioPlayer(SOUNDS.illegal);
@@ -119,15 +124,15 @@ export const SettingsModal = ({
 
 
                 <SettingRow label="Highlight moves">
-                    <Switch value={highlightMoves} onValueChange={setHighlightMoves} />
+                    <Switch value={highlightMoves} onValueChange={value => changeSetting("highlightMoves", value)} />
                 </SettingRow>
 
                 <SettingRow label="Show Eval">
-                    <Switch value={showMoveHints} onValueChange={setShowMoveHints} />
+                    <Switch value={showMoveHints} onValueChange={value => changeSetting("showMoveHints", value)} />
                 </SettingRow>
 
                 <SettingRow label="Sounds">
-                    <Switch value={soundEnabled} onValueChange={setSoundEnabled} />
+                    <Switch value={soundEnabled} onValueChange={value => changeSetting("soundEnabled", value)} />
                 </SettingRow>
                 <SettingRow label="Remove Ads">
                     <Pressable style={styles.premiumButton}>

@@ -466,12 +466,7 @@ const Match = () => {
         void persisted.then(async () => {
             if (!isCurrentResult()) return;
             const player = checkmate ? (humanWon ? checkmatePlayer : loosePlayer) : drawPlayer;
-            try {
-                await player.seekTo(0);
-                if (isCurrentResult()) await player.play();
-            } catch (error) {
-                console.log("Could not play result audio:", error);
-            }
+            await playSound(player, isCurrentResult);
         }, () => {
             // Neither the board nor the award is claimed to be durable on failure.
             if (humanWon && isCurrentResult()) {
