@@ -1,5 +1,5 @@
-import { useLocalSearchParams, router, useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocalSearchParams, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Chess, Square } from "chess.js";
 import ChessBoard from "../components/Chessboard";
@@ -11,7 +11,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import MasteryCircle from "@/components/MasteryCircle";
 import { Opening, OpeningProgress } from "@/data/openings";
 import { LastMove } from "@/types/match";
-import { getOpeningProgressResetVersion, updateOpeningProgress } from "@/util/storage";
+import { getOpeningProgress, getOpeningProgressResetVersion, subscribeOpeningProgress, updateOpeningProgress } from "@/util/storage";
+import { resolveOpeningRoute, validMasteryPercent } from "@/util/openingRoute";
+import OpeningUnavailable, { backToOpenings } from "@/components/OpeningUnavailable";
 
 export type MoveDetail = {
     order: string;
@@ -45,8 +47,12 @@ function createRun(opening: Opening): PracticeRun {
 }
 
 export default function OpeningPractice() {
-    const { opening, masteryPercent: initialMasteryPercent } = useLocalSearchParams();
-    const openingData = useMemo(() => JSON.parse(opening as string) as Opening, [opening]);
+    const params = useLocalSearchParams();
+    const openingData = resolveOpeningRoute(params);
+    return openingData ? <PracticeLesson key={openingData.eco} openingData={openingData} /> : <OpeningUnavailable />;
+}
+
+function PracticeLesson({ openingData }: { openingData: Opening }) {
     const playerColor = openingData.side === "black" ? "b" : "w";
     const [initialRun] = useState(() => createRun(openingData));
     // This synchronous record also guards against taps arriving before React renders.
@@ -57,7 +63,8 @@ export default function OpeningPractice() {
     const [lastMove, setLastMove] = useState<LastMove>(null);
     const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
     const [legalMoves, setLegalMoves] = useState<Square[]>([]);
-    const [masteryPercent, setMasteryPercent] = useState(Number(initialMasteryPercent ?? 0));
+    // Route mastery is deliberately ignored; saved progress is authoritative.
+    const [masteryPercent, setMasteryPercent] = useState(0);
     const [feedback, setFeedback] = useState("Recall the next move in this opening.");
     const [saveStatus, setSaveStatus] = useState<PracticeRun["saveStatus"]>("idle");
     const responseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -82,13 +89,36 @@ export default function OpeningPractice() {
     useFocusEffect(useCallback(() => {
         active.current = true;
         setIsFocused(true);
+        let cancelled = false;
+        let request = 0;
+        async function loadMastery() {
+            const current = ++request;
+            const run = runRef.current;
+            try {
+                const progress = await getOpeningProgress(openingData.name);
+                if (!cancelled && current === request && runRef.current === run && run.saveStatus === "idle") {
+                    setMasteryPercent(validMasteryPercent(progress?.mastery));
+                }
+            } catch (error) {
+                console.log("Could not load practice mastery:", error);
+            }
+        }
+        const unsubscribe = subscribeOpeningProgress(change => {
+            if (change === "reset") {
+                request++;
+                setMasteryPercent(0);
+            }
+        });
+        void loadMastery();
         return () => {
+            cancelled = true;
+            unsubscribe();
             active.current = false;
             setIsFocused(false);
             cancelResponse();
             setShowReward(false);
         };
-    }, [cancelResponse]));
+    }, [cancelResponse, openingData.name]));
 
     async function saveOpeningProgress(run: PracticeRun) {
         if (run.saveStatus === "saving" || run.saveStatus === "saved") return;
@@ -248,7 +278,7 @@ export default function OpeningPractice() {
         active.current = false;
         cancelResponse();
         setShowReward(false);
-        router.back();
+        backToOpenings();
     };
 
     return (

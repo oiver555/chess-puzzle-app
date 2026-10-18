@@ -29,6 +29,8 @@ import MasteryCircle from "@/components/MasteryCircle";
 import AdBanner from "@/components/AdBanner";
 import { Opening, OpeningProgress } from "@/data/openings";
 import { getOpeningProgress, subscribeOpeningProgress } from "@/util/storage";
+import { resolveOpeningRoute, validMasteryPercent } from "@/util/openingRoute";
+import OpeningUnavailable, { backToOpenings } from "@/components/OpeningUnavailable";
 
 const { width } = Dimensions.get("window");
 type ChessPieceComponent = React.ComponentType<any>;
@@ -42,8 +44,12 @@ type OpeningPosition = {
 };
 
 export default function OpeningDetailScreen() {
-    const { opening } = useLocalSearchParams();
-    const openingData = JSON.parse(opening as string) as Opening;
+    const params = useLocalSearchParams();
+    const openingData = resolveOpeningRoute(params);
+    return openingData ? <OpeningDetail key={openingData.eco} openingData={openingData} /> : <OpeningUnavailable />;
+}
+
+function OpeningDetail({ openingData }: { openingData: Opening }) {
     const [moveIndex, setMoveIndex] = React.useState(0);
     const defaultProgress: OpeningProgress = {
         openingId: openingData.name,
@@ -64,7 +70,7 @@ export default function OpeningDetailScreen() {
             const current = ++request;
             try {
                 const progress = await getOpeningProgress(openingData.name);
-                if (!cancelled && current === request) setMasteryPercent(progress?.mastery ?? 0);
+                if (!cancelled && current === request) setMasteryPercent(validMasteryPercent(progress?.mastery));
             } catch (error) {
                 console.log("Could not load opening mastery:", error);
             }
@@ -153,7 +159,7 @@ export default function OpeningDetailScreen() {
             <LinearGradient colors={[COLORS.header.dark, COLORS.header.dark2]} style={styles.header}>
                 <Pressable
                     style={styles.headerButton}
-                    onPress={() => router.back()}
+                    onPress={backToOpenings}
                 >
                     <Ionicons
                         name="chevron-back"
@@ -269,8 +275,7 @@ export default function OpeningDetailScreen() {
                         router.push({
                             pathname: "/OpeningPractice",
                             params: {
-                                opening: JSON.stringify(openingData),
-                                masteryPercent,
+                                openingId: openingData.eco,
                             },
                         });
                     }}
