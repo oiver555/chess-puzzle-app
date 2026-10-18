@@ -781,8 +781,9 @@ const Match = () => {
                 setLastMove(savedState?.lastMove ?? null);
                 setSelectedSquare(savedState?.selectedSquare ?? null);
                 setLegalMoves([]);
-                setSquareInCheck("");
-                setIsCheckmate(false);
+                setIsCheckmate(game.isCheckmate());
+                if (game.isCheck()) updateCheckSquare();
+                else setSquareInCheck("");
                 setEvalScore(0);
                 if (!savedState) {
                     await queueMatchSave({
@@ -797,10 +798,6 @@ const Match = () => {
                 setFen(game.fen());
                 setReadyLaunch(launchIdentity);
                 setMatchInitialization(previous => (previous ?? 0) + 1);
-                if (game.isCheckmate()) {
-                    const winner = game.turn() === "w" ? "b" : "w";
-                    if (winner === color) setShowWinModal(true);
-                }
             })().catch(error => {
                 if (isCurrentInitialization()) {
                     console.log("Could not initialize match:", error);

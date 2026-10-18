@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Difficulty, SavedAppState, SavedMatchState } from "@/types/match";
-import { Chess } from "chess.js";
+import { Chess, DEFAULT_POSITION } from "chess.js";
 import { OpeningProgress } from "@/data/openings";
 import { STORAGE_KEYS } from "@/constants/storage";
 
@@ -56,20 +56,12 @@ export async function loadMatchState(): Promise<SavedMatchState | null> {
     throw new Error("Invalid saved match");
   }
   const saved = state as Record<string, unknown>;
-  const lastMove = saved.lastMove;
-  const validLastMove = lastMove === undefined || lastMove === null || (
-    typeof lastMove === "object" && !Array.isArray(lastMove) &&
-    "from" in lastMove && "to" in lastMove && (
-      (lastMove.from === null && lastMove.to === null) ||
-      (isSquare(lastMove.from) && isSquare(lastMove.to))
-    )
-  );
   if (typeof saved.fen !== "string" || typeof saved.pgn !== "string" ||
       (saved.playerColor !== "w" && saved.playerColor !== "b") ||
       saved.aiColor !== (saved.playerColor === "w" ? "b" : "w") ||
       !isSupportedDifficulty(saved.difficulty) ||
       (saved.selectedSquare !== null && !isSquare(saved.selectedSquare)) ||
-      !validLastMove || typeof saved.savedAt !== "string" ||
+      typeof saved.savedAt !== "string" ||
       !Number.isFinite(Date.parse(saved.savedAt))) {
     throw new Error("Invalid saved match settings");
   }
@@ -77,10 +69,18 @@ export async function loadMatchState(): Promise<SavedMatchState | null> {
   const expected = new Chess(saved.fen);
   const reconstructed = new Chess();
   reconstructed.loadPgn(saved.pgn);
+  const history = reconstructed.history({ verbose: true });
+  if ((history[0]?.before ?? reconstructed.fen()) !== DEFAULT_POSITION) {
+    throw new Error("Saved match must start from the standard position");
+  }
   if (reconstructed.fen() !== expected.fen()) {
     throw new Error("Saved FEN and PGN do not match");
   }
-  return state as SavedMatchState;
+  const lastMove = history[history.length - 1];
+  return {
+    ...state as SavedMatchState,
+    lastMove: lastMove ? { from: lastMove.from, to: lastMove.to } : null,
+  };
 }
 
 export async function clearMatchState() {
