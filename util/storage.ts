@@ -15,18 +15,47 @@ export async function saveMatchState(state: SavedMatchState) {
 export async function saveWins(wins: number) {
   await AsyncStorage.setItem(STORAGE_KEYS.WINS, JSON.stringify(wins));
 }
+// Hint reads and writes share one queue across Match instances.
+let hintStorageQueue: Promise<unknown> = Promise.resolve();
+let pendingHints: number | undefined;
+let hintWriteVersion = 0;
+
+function queueHintOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = hintStorageQueue.catch(() => {}).then(operation);
+  hintStorageQueue = result;
+  return result;
+}
+
+function isHintBalance(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
 export async function saveHints(hints: number) {
-  await AsyncStorage.setItem(STORAGE_KEYS.HINTS, JSON.stringify(hints));
+  if (!isHintBalance(hints)) throw new Error("Invalid hint balance");
+  pendingHints = hints;
+  const version = ++hintWriteVersion;
+  await queueHintOperation(async () => {
+    await AsyncStorage.setItem(STORAGE_KEYS.HINTS, JSON.stringify(hints));
+    if (version === hintWriteVersion) pendingHints = undefined;
+  });
 }
 
 export async function loadHints(): Promise<number> {
-  const data = await AsyncStorage.getItem(STORAGE_KEYS.HINTS);
-
-  if (data === null) {
-    return 3; // or whatever default you want
-  }
-
-  return JSON.parse(data);
+  return queueHintOperation(async () => {
+    // Retry an unsaved in-memory balance before another Match can read stale data.
+    if (pendingHints !== undefined) {
+      const hints = pendingHints;
+      const version = hintWriteVersion;
+      await AsyncStorage.setItem(STORAGE_KEYS.HINTS, JSON.stringify(hints));
+      if (version === hintWriteVersion) pendingHints = undefined;
+      return hints;
+    }
+    const data = await AsyncStorage.getItem(STORAGE_KEYS.HINTS);
+    if (data === null) return 3;
+    const hints: unknown = JSON.parse(data);
+    if (!isHintBalance(hints)) throw new Error("Invalid saved hint balance");
+    return hints;
+  });
 }
 
 export async function loadWins(): Promise<number> {

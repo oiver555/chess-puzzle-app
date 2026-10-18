@@ -137,10 +137,27 @@ const Match = () => {
     } | null>(null);
     const [hintMove, setHintMove] = React.useState<{ from: Square; to: Square } | null>(null);
     const displayedHintFenRef = React.useRef<string | null>(null);
-    const [hintsLeft, setHintsLeft] = React.useState(3);
+    const [hintsLeft, setHintsLeft] = React.useState(0);
+    const hintsBalanceRef = React.useRef<number | null>(null);
     const [isAiThinking, setIsAiThinking] = React.useState(false);
     const [numOfWins, setNumOfWins] = React.useState(0);
     const winsRef = React.useRef(0);
+
+    const updateHintBalance = (change: number) => {
+        const balance = hintsBalanceRef.current;
+        if (balance === null || !activeRef.current || isAbandoned()) return false;
+        const nextBalance = balance + change;
+        if (!Number.isSafeInteger(nextBalance) || nextBalance < 0) return false;
+        hintsBalanceRef.current = nextBalance;
+        setHintsLeft(nextBalance);
+        void saveHints(nextBalance).catch(error => {
+            console.log("Could not save hint balance:", error);
+            if (activeRef.current && !isAbandoned()) {
+                Alert.alert("Hint balance not saved", "Your hint balance changed for this session, but could not be saved. It may be lost if the app closes. Saving will be retried with the next balance update or match.");
+            }
+        });
+        return true;
+    };
 
     const scheduleTask = React.useCallback((callback: () => void, delay: number, fen?: string) => {
         const version = versionRef.current;
@@ -303,7 +320,7 @@ const Match = () => {
 
     const getHint = () => {
         if (!activeRef.current || !isMatchReady || !isEngineReady || game.isGameOver()) return;
-        if (hintsLeft <= 0 || game.turn() !== playerColor) return;
+        if (hintsBalanceRef.current === null || hintsBalanceRef.current <= 0 || game.turn() !== playerColor) return;
         if (displayedHintFenRef.current === getFen()) return;
         const current = actionRef.current;
         if (current && isCurrentAction(current)) return;
@@ -425,11 +442,7 @@ const Match = () => {
                 setNumOfWins(nextWins);
                 void saveWins(nextWins).catch(error => console.log("Could not save wins:", error));
                 if (nextWins === requiredNumOfWins) {
-                    setHintsLeft(prev => {
-                        const nextHints = prev + 3;
-                        void saveHints(nextHints).catch(error => console.log("Could not save hint reward:", error));
-                        return nextHints;
-                    });
+                    updateHintBalance(2);
                 }
                 setShowWinModal(true);
             } else {
@@ -707,9 +720,9 @@ const Match = () => {
         const promotion = selectedMove.slice(4, 5) as "q" | "r" | "b" | "n" | "";
         actionRef.current = null;
         if (action.kind === "hint") {
+            if (!updateHintBalance(-1)) return;
             displayedHintFenRef.current = action.fen;
             setHintMove({ from, to });
-            setHintsLeft(prev => Math.max(0, prev - 1));
             return;
         }
 
@@ -745,6 +758,7 @@ const Match = () => {
             terminalResultRef.current = null;
             setMatchInitialization(null);
             setReadyLaunch(null);
+            hintsBalanceRef.current = null;
             const generation = ++initializationVersion;
             const isCurrentInitialization = () =>
                 !cancelled && !isAbandoned() && activeRef.current && generation === initializationVersion;
@@ -761,6 +775,10 @@ const Match = () => {
                 // Earlier move saves/deletes must finish before any recovery read or replacement.
                 await matchStorageQueue.catch(() => {});
                 if (!isCurrentInitialization()) return;
+                const hints = await loadHints();
+                if (!isCurrentInitialization()) return;
+                hintsBalanceRef.current = hints;
+                setHintsLeft(hints);
                 let savedState = null;
                 if (intent !== "new") {
                     try {
@@ -809,9 +827,6 @@ const Match = () => {
                     winsRef.current = wins;
                     setNumOfWins(wins);
                 }
-            });
-            loadHints().then(hints => {
-                if (isCurrentInitialization() && hints) setHintsLeft(hints);
             });
         }
 
