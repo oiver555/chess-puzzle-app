@@ -103,7 +103,7 @@ export default function LearnOpeningsScreen() {
                             router.push({
                                 pathname: "/OpenItemScreen",
                                 params: {
-                                    opening: JSON.stringify(opening),
+                                    openingId: opening.eco,
                                 },
                             });
                         }}
