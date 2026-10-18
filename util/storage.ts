@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Difficulty, SavedAppState, SavedMatchState } from "@/types/match";
 import { Chess, DEFAULT_POSITION } from "chess.js";
-import { OpeningProgress } from "@/data/openings";
+import { OpeningProgress, openings } from "@/data/openings";
 import { STORAGE_KEYS } from "@/constants/storage";
 import { requiredNumOfWins } from "@/constants/globals";
 
@@ -247,9 +247,43 @@ export function getOpeningProgressResetVersion() {
   return openingResetVersion;
 }
 
-async function readOpeningProgress(): Promise<OpeningProgressMap> {
+async function readOpeningRecord(): Promise<Record<string, unknown>> {
   const saved = await AsyncStorage.getItem(STORAGE_KEYS.OPENING_PROGRESS);
-  return saved ? JSON.parse(saved) : {};
+  if (saved === null) return {};
+  const value: unknown = JSON.parse(saved);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid opening progress record");
+  }
+  return value as Record<string, unknown>;
+}
+
+function validatedOpeningProgress(name: string, value: unknown): OpeningProgress | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.mastery !== "number" || !Number.isFinite(record.mastery) || record.mastery < 0) return null;
+  if (record.openingId !== undefined && record.openingId !== name) return null;
+  const counts = ["completedReps", "correctMoves", "totalAttempts"] as const;
+  if (counts.some(key => record[key] !== undefined && !isHintBalance(record[key]))) return null;
+  if (record.lastPracticedAt !== undefined && typeof record.lastPracticedAt !== "string") return null;
+  return {
+    openingId: name,
+    // Preserve the >=100 learned threshold, while keeping consumer displays bounded.
+    mastery: Math.min(record.mastery, 100),
+    completedReps: record.completedReps as number | undefined ?? 0,
+    correctMoves: record.correctMoves as number | undefined ?? 0,
+    totalAttempts: record.totalAttempts as number | undefined ?? 0,
+    lastPracticedAt: record.lastPracticedAt as string | undefined,
+  };
+}
+
+async function readOpeningProgress(): Promise<OpeningProgressMap> {
+  const raw = await readOpeningRecord();
+  const progress: OpeningProgressMap = Object.create(null);
+  for (const [name, value] of Object.entries(raw)) {
+    const valid = validatedOpeningProgress(name, value);
+    if (valid) progress[name] = valid;
+  }
+  return progress;
 }
 
 export function getAllOpeningProgress(): Promise<OpeningProgressMap> {
@@ -264,10 +298,13 @@ export function updateOpeningProgress(
   return queueOpeningProgress(async () => {
     // A retry from a run preceding a successful reset cannot resurrect its award.
     if (resetVersion !== undefined && resetVersion !== openingResetVersion) return null;
-    const allProgress = await readOpeningProgress();
-    const progress = update(allProgress[openingId]);
-    allProgress[openingId] = progress;
-    await AsyncStorage.setItem(STORAGE_KEYS.OPENING_PROGRESS, JSON.stringify(allProgress));
+    const raw = await readOpeningRecord();
+    const exists = Object.prototype.hasOwnProperty.call(raw, openingId);
+    const previous = exists ? validatedOpeningProgress(openingId, raw[openingId]) : undefined;
+    if (exists && !previous) throw new Error("Cannot update invalid opening progress");
+    const progress = update(previous ?? undefined);
+    // Preserve excluded entries, and never persist the sanitized read view wholesale.
+    await AsyncStorage.setItem(STORAGE_KEYS.OPENING_PROGRESS, JSON.stringify({ ...raw, [openingId]: progress }));
     notifyOpeningProgress("save");
     return progress;
   });
@@ -289,7 +326,7 @@ export async function getOpeningProgress(openingId: string): Promise<OpeningProg
 export async function getLearnedOpeningsCount() {
   const allProgress = await getAllOpeningProgress();
 
-  return Object.values(allProgress).filter(
-    (progress) => progress.mastery >= 100,
+  return [...new Set(openings.map(opening => opening.name))].filter(
+    name => allProgress[name]?.mastery >= 100,
   ).length;
 }

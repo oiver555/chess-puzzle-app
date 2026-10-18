@@ -49,13 +49,15 @@ export default function App() {
                 void load();
             }
         });
+        const unsubscribeFocus = navigation.addListener("focus", () => { void load(); });
         void load();
         return () => {
             cancelled = true;
             unsubscribe();
+            unsubscribeFocus();
             NavigationBar.setVisibilityAsync("visible");
         };
-    }, []);
+    }, [navigation]);
 
 
     React.useEffect(() => {
