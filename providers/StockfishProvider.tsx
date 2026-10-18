@@ -33,6 +33,12 @@ type StockfishContextType = {
 const StockfishContext = createContext<StockfishContextType | null>(null);
 type InitializationPhase = "waiting-uciok" | "waiting-readyok" | "ready" | "failed";
 const INITIALIZATION_TIMEOUT_MS = 30000;
+const ignoreSearchCallback = () => {};
+
+function detachSearchCallbacks(search: Search) {
+    search.onOutput = ignoreSearchCallback;
+    search.onError = ignoreSearchCallback;
+}
 
 export function StockfishProvider({ children }: { children: React.ReactNode }) {
     const [isEngineReady, setIsEngineReady] = useState(false);
@@ -198,6 +204,7 @@ export function StockfishProvider({ children }: { children: React.ReactNode }) {
     const stopSearch = useCallback((search: Search) => {
         const wasCancelled = search.cancelled;
         search.cancelled = true;
+        detachSearchCallbacks(search);
         if (search.phase === "searching") {
             search.phase = "stopping";
             search.phaseStartedAt = Date.now();
@@ -272,6 +279,7 @@ export function StockfishProvider({ children }: { children: React.ReactNode }) {
             }
             if (output.startsWith("bestmove")) logSearch("bestmove", active);
             if (!active.cancelled) active.onOutput(output);
+            if (output.startsWith("bestmove")) detachSearchCallbacks(active);
             if (failedRef.current || activeSearchRef.current !== active) return;
             if (output.startsWith("bestmove")) {
                 // Drain bestmove BEFORE asking for readyok. isready can respond during search.
