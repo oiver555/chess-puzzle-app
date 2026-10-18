@@ -31,9 +31,10 @@ type StockfishContextType = {
 };
 
 const StockfishContext = createContext<StockfishContextType | null>(null);
+type InitializationPhase = "waiting-uciok" | "waiting-readyok" | "ready" | "failed";
+const INITIALIZATION_TIMEOUT_MS = 30000;
 
 export function StockfishProvider({ children }: { children: React.ReactNode }) {
-    const [isUciInitialized, setIsUciInitialized] = useState(false);
     const [isEngineReady, setIsEngineReady] = useState(false);
     const [engineError, setEngineError] = useState<string | null>(null);
     const loopStartedRef = useRef(false);
@@ -45,6 +46,9 @@ export function StockfishProvider({ children }: { children: React.ReactNode }) {
     const outputRef = useRef<(output: string) => void>(() => {});
     const outputBufferRef = useRef("");
     const searchIdRef = useRef(0);
+    const initializationPhaseRef = useRef<InitializationPhase>("waiting-uciok");
+    const initializationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const initialReadyRequestedRef = useRef(false);
 
     const logSearch = useCallback((event: string, search: Search) => {
         const now = Date.now();
@@ -80,22 +84,62 @@ export function StockfishProvider({ children }: { children: React.ReactNode }) {
         onError: useCallback((error: string) => console.log("Stockfish error:", error), []),
     });
 
-    const failSearch = useCallback(() => {
+    const clearInitializationTimer = useCallback(() => {
+        if (initializationTimerRef.current !== null) clearTimeout(initializationTimerRef.current);
+        initializationTimerRef.current = null;
+    }, []);
+
+    const failEngine = useCallback((message: string, event = "failure") => {
+        if (failedRef.current) return;
         const active = activeSearchRef.current;
         const pending = pendingSearchRef.current;
-        if (active) logSearch("timeout", active);
+        if (active) logSearch(event, active);
+        clearInitializationTimer();
         if (active?.timeout) clearTimeout(active.timeout);
         activeSearchRef.current = null;
         pendingSearchRef.current = null;
         failedRef.current = true;
+        initializationPhaseRef.current = "failed";
+        initialReadyRequestedRef.current = false;
         readyRef.current = false;
         setIsEngineReady(false);
-        sendCommandToStockfish("stop");
-        const message = "The computer did not respond. Restart the app before playing Stockfish again.";
         setEngineError(message);
+        // Stopping is best-effort: another native exception must not prevent failure callbacks.
+        try {
+            sendCommandToStockfish("stop");
+        } catch (error) {
+            console.log("Could not stop failed Stockfish:", error);
+        }
         if (active && !active.cancelled) active.onError(message);
         pending?.onError(message);
-    }, [logSearch, sendCommandToStockfish]);
+    }, [clearInitializationTimer, logSearch, sendCommandToStockfish]);
+
+    const sendCommand = useCallback((command: string) => {
+        if (failedRef.current) return false;
+        try {
+            sendCommandToStockfish(command);
+            return true;
+        } catch (error) {
+            console.log("Stockfish command failed:", command, error);
+            failEngine("A computer command failed. Restart the app before playing Stockfish again.");
+            return false;
+        }
+    }, [failEngine, sendCommandToStockfish]);
+
+    const watchInitialization = useCallback((phase: "waiting-uciok" | "waiting-readyok") => {
+        clearInitializationTimer();
+        const timer = setTimeout(() => {
+            if (initializationPhaseRef.current !== phase || initializationTimerRef.current !== timer) return;
+            console.log("Stockfish initialization timed out:", phase);
+            const response = phase === "waiting-uciok" ? "uciok" : "readyok";
+            failEngine(`The computer could not initialize (waiting for ${response}). Restart the app before playing Stockfish again.`, "initialization-timeout");
+        }, INITIALIZATION_TIMEOUT_MS);
+        initializationTimerRef.current = timer;
+    }, [clearInitializationTimer, failEngine]);
+
+    const failSearch = useCallback(() => {
+        failEngine("The computer did not respond. Restart the app before playing Stockfish again.", "timeout");
+    }, [failEngine]);
 
     const watchSearch = useCallback((search: Search) => {
         if (search.timeout) clearTimeout(search.timeout);
@@ -119,14 +163,14 @@ export function StockfishProvider({ children }: { children: React.ReactNode }) {
             hint: { elo: 2200, milliseconds: 1500 },
         };
         const profile = profiles[search.profile];
-        sendCommandToStockfish(`setoption name UCI_LimitStrength value ${search.profile !== "hint"}`);
-        sendCommandToStockfish(`setoption name UCI_Elo value ${profile.elo}`);
-        sendCommandToStockfish(`setoption name MultiPV value ${search.profile === "skilled" ? 4 : 1}`);
-        sendCommandToStockfish(`position fen ${search.fen}`);
-        sendCommandToStockfish(search.profile === "skilled"
+        if (!sendCommand(`setoption name UCI_LimitStrength value ${search.profile !== "hint"}`)) return;
+        if (!sendCommand(`setoption name UCI_Elo value ${profile.elo}`)) return;
+        if (!sendCommand(`setoption name MultiPV value ${search.profile === "skilled" ? 4 : 1}`)) return;
+        if (!sendCommand(`position fen ${search.fen}`)) return;
+        sendCommand(search.profile === "skilled"
             ? "go depth 6 movetime 750"
             : `go movetime ${profile.milliseconds}`);
-    }, [logSearch, sendCommandToStockfish, watchSearch]);
+    }, [logSearch, sendCommand, watchSearch]);
 
     const startPendingSearch = useCallback(() => {
         if (activeSearchRef.current || !readyRef.current || failedRef.current) return;
@@ -144,12 +188,12 @@ export function StockfishProvider({ children }: { children: React.ReactNode }) {
         if (newGameRef.current) {
             newGameRef.current = false;
             watchSearch(search);
-            sendCommandToStockfish("ucinewgame");
-            sendCommandToStockfish("isready");
+            if (!sendCommand("ucinewgame")) return;
+            sendCommand("isready");
         } else {
             beginSearch(search);
         }
-    }, [beginSearch, logSearch, sendCommandToStockfish, watchSearch]);
+    }, [beginSearch, logSearch, sendCommand, watchSearch]);
 
     const stopSearch = useCallback((search: Search) => {
         const wasCancelled = search.cancelled;
@@ -159,9 +203,9 @@ export function StockfishProvider({ children }: { children: React.ReactNode }) {
             search.phaseStartedAt = Date.now();
             logSearch("stopping", search);
             watchSearch(search);
-            sendCommandToStockfish("stop");
+            sendCommand("stop");
         } else if (!wasCancelled) logSearch("cancelled", search);
-    }, [logSearch, sendCommandToStockfish, watchSearch]);
+    }, [logSearch, sendCommand, watchSearch]);
 
     const cancelSearch = useCallback((owner: symbol, newGame = false) => {
         if (pendingSearchRef.current?.owner === owner) pendingSearchRef.current = null;
@@ -185,16 +229,31 @@ export function StockfishProvider({ children }: { children: React.ReactNode }) {
         outputRef.current = (output) => {
             if (failedRef.current) return;
             if (output === "uciok") {
-                setIsUciInitialized(true);
+                if (initializationPhaseRef.current !== "waiting-uciok") return;
+                initializationPhaseRef.current = "waiting-readyok";
+                initialReadyRequestedRef.current = false;
+                watchInitialization("waiting-readyok");
+                if (!sendCommand("setoption name Threads value 3")) return;
+                if (!sendCommand("ucinewgame")) return;
+                // Mark the readiness request before submission to allow a synchronous reply.
+                initialReadyRequestedRef.current = true;
+                sendCommand("isready");
                 return;
             }
             const active = activeSearchRef.current;
             if (output === "readyok") {
-                if (active) logSearch("readyok", active);
-                if (!readyRef.current) {
+                if (initializationPhaseRef.current === "waiting-readyok" && initialReadyRequestedRef.current) {
+                    clearInitializationTimer();
+                    initializationPhaseRef.current = "ready";
+                    initialReadyRequestedRef.current = false;
                     readyRef.current = true;
                     setIsEngineReady(true);
-                } else if (active?.phase === "preparing" && !active.cancelled) {
+                    startPendingSearch();
+                    return;
+                }
+                if (initializationPhaseRef.current !== "ready") return;
+                if (active) logSearch("readyok", active);
+                if (active?.phase === "preparing" && !active.cancelled) {
                     beginSearch(active);
                     return;
                 } else if (active?.phase === "syncing" || active?.phase === "preparing") {
@@ -213,39 +272,46 @@ export function StockfishProvider({ children }: { children: React.ReactNode }) {
             }
             if (output.startsWith("bestmove")) logSearch("bestmove", active);
             if (!active.cancelled) active.onOutput(output);
+            if (failedRef.current || activeSearchRef.current !== active) return;
             if (output.startsWith("bestmove")) {
                 // Drain bestmove BEFORE asking for readyok. isready can respond during search.
                 active.phase = "syncing";
                 active.phaseStartedAt = Date.now();
                 logSearch("syncing", active);
                 watchSearch(active);
-                sendCommandToStockfish("isready");
+                sendCommand("isready");
             }
         };
-    }, [beginSearch, logSearch, sendCommandToStockfish, startPendingSearch, watchSearch]);
+    }, [beginSearch, clearInitializationTimer, logSearch, sendCommand, startPendingSearch, watchInitialization, watchSearch]);
 
     useEffect(() => {
-        if (loopStartedRef.current) return;
+        if (loopStartedRef.current) {
+            // Effect cleanup/replay must not leave an unfinished startup without a deadline.
+            const phase = initializationPhaseRef.current;
+            if (phase === "waiting-uciok" || phase === "waiting-readyok") watchInitialization(phase);
+            return;
+        }
         loopStartedRef.current = true;
-        stockfishLoop();
-        sendCommandToStockfish("uci");
-    }, [stockfishLoop, sendCommandToStockfish]);
-
-    useEffect(() => {
-        if (!isUciInitialized) return;
-        sendCommandToStockfish("setoption name Threads value 3");
-        sendCommandToStockfish("ucinewgame");
-        sendCommandToStockfish("isready");
-    }, [isUciInitialized, sendCommandToStockfish]);
+        watchInitialization("waiting-uciok");
+        try {
+            stockfishLoop();
+        } catch (error) {
+            console.log("Stockfish startup failed:", error);
+            failEngine("The computer could not start. Restart the app before playing Stockfish again.");
+            return;
+        }
+        sendCommand("uci");
+    }, [failEngine, sendCommand, stockfishLoop, watchInitialization]);
 
     useEffect(() => () => {
+        clearInitializationTimer();
         const active = activeSearchRef.current;
         if (active?.timeout) clearTimeout(active.timeout);
         activeSearchRef.current = null;
         pendingSearchRef.current = null;
         outputRef.current = () => {};
         outputBufferRef.current = "";
-    }, []);
+    }, [clearInitializationTimer]);
 
     return (
         <StockfishContext.Provider value={{ isEngineReady, engineError, requestSearch, cancelSearch }}>
